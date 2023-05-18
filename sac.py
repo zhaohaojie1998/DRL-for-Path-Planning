@@ -106,10 +106,10 @@ class Actor(nn.Module):
 
         # 计算正态分布概率的对数 log[P_pi(a|s)] -> (batch, act_dim)
         if with_logprob:
-			# SAC论文通过u的对数概率计算a的对数概率公式:
-			# logp_pi_a = (dist.log_prob(u) - torch.log(1 - a.pow(2) + 1e-6)).sum(dim=1, keepdim=True)
+            # SAC论文通过u的对数概率计算a的对数概率公式:
+            # logp_pi_a = (dist.log_prob(u) - torch.log(1 - a.pow(2) + 1e-6)).sum(dim=1, keepdim=True)
 
-			# SAC原文公式有a=tanh(u), 导致梯度消失, OpenAI公式:
+            # SAC原文公式有a=tanh(u), 导致梯度消失, OpenAI公式:
             logp_pi_a = dist.log_prob(u).sum(axis=1, keepdim=True) - (2 * (np.log(2) - u - F.softplus(-2 * u))).sum(axis=1, keepdim=True) # (batch, 1)
         else:
             logp_pi_a = None
@@ -122,7 +122,7 @@ class Actor(nn.Module):
             a, _ = self.forward(obs, deterministic, False)
         self.train()
         return a.cpu().numpy().flatten() # (act_dim, ) ndarray
-	
+    
 
 
 
@@ -228,9 +228,9 @@ class SAC:
         critic_optim_class = th.optim.Adam, # Q 优化器类型
         actor_optim_class = th.optim.Adam,  # π 优化器类型
         
-		adaptive_alpha: bool = True,       # 是否自适应温度系数
-		target_entropy: float = None,      # 自适应温度系数目标熵, 默认: -dim(A)
-		lr_alpha: float = 1e-3,            # α 学习率
+        adaptive_alpha: bool = True,       # 是否自适应温度系数
+        target_entropy: float = None,      # 自适应温度系数目标熵, 默认: -dim(A)
+        lr_alpha: float = 1e-3,            # α 学习率
         alpha_optim_class = th.optim.Adam, # α 优化器类型
 
         use_per: bool = False,  # 是否优先经验回放
