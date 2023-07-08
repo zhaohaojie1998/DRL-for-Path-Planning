@@ -395,11 +395,11 @@ class SAC:
         
 
         ''' use lr decay '''
-        self._lr_decay(self.alpha_optimizer)
+        self._lr_decay(self.actor_optimizer)
         self._lr_decay(self.q_critic_optimizer)
-
         if self.adaptive_alpha:
             self._lr_decay(self.alpha_optimizer)
+
 
         ''' return info '''
         return {'q_loss': q_loss.item(), 
