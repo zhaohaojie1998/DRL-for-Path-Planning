@@ -395,17 +395,11 @@ class SAC:
         
 
         ''' use lr decay '''
-        if self.lr_decay_period:
-            self.lr_actor = 0.9 * self.lr_actor * (1 - self.learn_counter / self.lr_decay_period) + 0.1 * self.lr_actor
-            self.lr_critic = 0.9 * self.lr_critic * (1 - self.learn_counter / self.lr_decay_period) + 0.1 * self.lr_critic
+        self._lr_decay(self.alpha_optimizer)
+        self._lr_decay(self.q_critic_optimizer)
 
-            self._set_lr(self.actor_optimizer, self.lr_actor)
-            self._set_lr(self.q_critic_optimizer, self.lr_critic)
-
-            if self.adaptive_alpha:
-                self.lr_alpha = 0.9 * self.lr_alpha * (1 - self.learn_counter / self.lr_decay_period) + 0.1 * self.lr_alpha
-                self._set_lr(self.alpha_optimizer, self.lr_alpha)
-        
+        if self.adaptive_alpha:
+            self._lr_decay(self.alpha_optimizer)
 
         ''' return info '''
         return {'q_loss': q_loss.item(), 
@@ -490,6 +484,17 @@ class SAC:
         """
         for g in optimizer.param_groups:
             g['lr'] = lr
+
+    def _lr_decay(self, optimizer: th.optim.Optimizer):
+        """学习率衰减 (在 lr_decay_period 周期内衰减到初始的 0.1 倍, period 为 None/0 不衰减)
+        >>> lr = 0.9 * lr_init * max(0, 1 - step / lr_decay_period) + 0.1 * lr_init
+        >>> self._set_lr(optimizer, lr)
+        """
+        if self.lr_decay_period:
+            lr_init = optimizer.defaults["lr"] # 读取优化器初始化时的 lr_init
+            lr = 0.9 * lr_init * max(0, 1 - self.learn_counter / self.lr_decay_period) + 0.1 * lr_init # 更新 lr
+            self._set_lr(optimizer, lr) # 更改 param_groups 的 lr
+            # NOTE 修改 param_groups 的 lr 并不会改变 defaults 的 lr
 
     @staticmethod
     def _optim_step(optimizer: th.optim.Optimizer, loss: th.Tensor):
