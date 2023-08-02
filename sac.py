@@ -410,14 +410,14 @@ class SAC:
                 }
     
 
-    def save(self):
+    def save(self, file):
         """存储Actor网络权重"""
-        th.save(self.actor.state_dict(), 'Model.pkl')
+        th.save(self.actor.state_dict(), file)
         
     
-    def load(self):
+    def load(self, file):
         """加载Actor网络权重"""
-        self.actor.load_state_dict(th.load('Model.pkl', map_location=self.device))
+        self.actor.load_state_dict(th.load(file, map_location=self.device))
 
     
     @staticmethod

@@ -11,7 +11,7 @@ Created on Mon Nov 15 15:45:25 2021
 import torch
 import pylab as pl
 from copy import deepcopy
-from env import PathPlanning, NormalizedActionsWrapper
+from env import StaticPathPlanning, NormalizedActionsWrapper
 
 from sac import SAC
 
@@ -26,10 +26,10 @@ render = True           # 是否可视化训练/评估过程(仿真速度会降�
 
 
 '''环境算法设置'''
-env = PathPlanning()
+env = StaticPathPlanning()
 env = NormalizedActionsWrapper(env)
 agent = SAC(env.observation_space, env.action_space, memory_size=10000)
-agent.load()
+agent.load("Model.pkl")
 
 
     

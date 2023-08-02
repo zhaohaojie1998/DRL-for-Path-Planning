@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
  Created on Tue May 16 2023 17:54:17
- Modified on 2023-5-16 17:54:17
+ Modified on 2023-8-02 17:38:00
  
  @auther: HJ https://github.com/zhaohaojie1998
 """
@@ -60,8 +60,10 @@ class Map:
         
 
 
+# 静态环境 - 老版gym接口格式
+class StaticPathPlanning(gym.Env):
+    """从航点搜索的角度进行规划"""
 
-class PathPlanning(gym.Env):
     def __init__(self, num_pos = 6, map_class = Map, max_search_steps = 200):
         """起点终点之间的导航点个数, 地图信息, 最大搜索次数
         """
@@ -206,6 +208,44 @@ class PathPlanning(gym.Env):
         """关闭绘图"""
         self.__render_flag = True
         pl.close()
+
+
+
+
+
+
+
+# 动态环境 - 新版gym接口格式
+class DynamicPathPlanning(gym.Env):
+    """从力学与控制的角度进行规划
+    >>> dx/dt = V * cos(θ)
+    >>> dy/dt = V * sin(θ)
+    >>> dθ/dt = V/L * tan(δ)
+    >>> dV/dt = a
+    >>> u = [a, δ]
+    
+    """
+
+    def __init__(self):
+        pass
+
+    def reset(self, *args, **kwargs):
+        self.__reset_flag = False
+        obs, info = None, None
+        return obs, info
+    
+    def step(self, act):
+        obs, rew, done, truncated, info = None, None, None, None, None
+        return obs, rew, done, truncated, info
+    
+    def render(self, mode="human"):
+        pass
+
+    def close(self):
+        pass
+
+
+
 
 
 
