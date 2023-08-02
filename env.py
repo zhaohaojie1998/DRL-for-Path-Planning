@@ -226,7 +226,7 @@ class DynamicPathPlanning(gym.Env):
     
     """
 
-    def __init__(self):
+    def __init__(self, dt):
         pass
 
     def reset(self, *args, **kwargs):
