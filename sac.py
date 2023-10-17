@@ -223,10 +223,10 @@ class SAC:
         lr_actor: float = 1e-3,      # π 学习率
         tau: float = 0.005,          # target Q 软更新系数 τ
 
-        q_loss_class = nn.MSELoss,  # Q 损失函数类型(use_per=True时该设置无效)
+        q_loss_cls = nn.MSELoss,  # Q 损失函数类型(use_per=True时该设置无效)
         
-        critic_optim_class = th.optim.Adam, # Q 优化器类型
-        actor_optim_class = th.optim.Adam,  # π 优化器类型
+        critic_optim_cls = th.optim.Adam, # Q 优化器类型
+        actor_optim_cls = th.optim.Adam,  # π 优化器类型
         
         adaptive_alpha: bool = True,       # 是否自适应温度系数
         target_entropy: float = None,      # 自适应温度系数目标熵, 默认: -dim(A)
@@ -273,12 +273,12 @@ class SAC:
         self.target_q_critic = self._build_target(self.q_critic)
         
         # 优化器初始化
-        self.actor_optimizer = actor_optim_class(self.actor.parameters(), lr_actor)
-        self.q_critic_optimizer = critic_optim_class(self.q_critic.parameters(), lr_critic)
+        self.actor_optimizer = actor_optim_cls(self.actor.parameters(), lr_actor)
+        self.q_critic_optimizer = critic_optim_cls(self.q_critic.parameters(), lr_critic)
         
         # 设置损失函数
         self.grad_clip = grad_clip
-        self.q_loss = q_loss_class()
+        self.q_loss = q_loss_cls()
         
         # 是否自适应α
         self.alpha = alpha
@@ -292,7 +292,16 @@ class SAC:
 
         # 其它参数
         self.learn_counter = 0
-            
+    
+    
+    def setup_nn(self, actor: Actor, critic: Q_Critic, *, actor_optim_cls=th.optim.Adam, critic_optim_cls=th.optim.Adam):
+        """修改神经网络模型, 要求按Actor/Q_Critic格式自定义网络"""
+        self.actor = deepcopy(actor).to(self.device)
+        self.q_critic = deepcopy(critic).to(self.device) # Twin Q Critic
+        self.target_q_critic = self._build_target(self.q_critic)
+        self.actor_optimizer = actor_optim_cls(self.actor.parameters(), self.lr_actor)
+        self.q_critic_optimizer = critic_optim_cls(self.q_critic.parameters(), self.lr_critic)
+
 
     def store_memory(self, s, a, r, s_, d):
         """经验存储"""
