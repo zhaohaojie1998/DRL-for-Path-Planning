@@ -293,7 +293,7 @@ class SAC:
         # 其它参数
         self.learn_counter = 0
     
-    
+
     def setup_nn(self, actor: Actor, critic: Q_Critic, *, actor_optim_cls=th.optim.Adam, critic_optim_cls=th.optim.Adam):
         """修改神经网络模型, 要求按Actor/Q_Critic格式自定义网络"""
         self.actor = deepcopy(actor).to(self.device)
@@ -310,7 +310,7 @@ class SAC:
 
     def select_action(self, state, *, deterministic=False, **kwargs) -> np.ndarray:
         """选择动作"""
-        state = th.FloatTensor(state).unsqueeze(0).to(self.device)
+        state = th.FloatTensor(state).unsqueeze(0).to(self.device) # (1, state_dim) tensor
         return self.actor.act(state, deterministic) # (act_dim, ) ndarray
 
 
