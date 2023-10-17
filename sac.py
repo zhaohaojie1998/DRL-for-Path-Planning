@@ -294,10 +294,12 @@ class SAC:
         self.learn_counter = 0
     
 
-    def setup_nn(self, actor: Actor, critic: Q_Critic, *, actor_optim_cls=th.optim.Adam, critic_optim_cls=th.optim.Adam):
+    def setup_nn(self, actor: Actor, critic: Q_Critic, *, actor_optim_cls=th.optim.Adam, critic_optim_cls=th.optim.Adam, copy=True):
         """修改神经网络模型, 要求按Actor/Q_Critic格式自定义网络"""
-        self.actor = deepcopy(actor).to(self.device)
-        self.q_critic = deepcopy(critic).to(self.device) # Twin Q Critic
+        self.actor = deepcopy(actor) if copy else actor
+        self.actor.train().to(self.device)
+        self.q_critic = deepcopy(critic) if copy else critic
+        self.q_critic.train().to(self.device) # Twin Q Critic
         self.target_q_critic = self._build_target(self.q_critic)
         self.actor_optimizer = actor_optim_cls(self.actor.parameters(), self.lr_actor)
         self.q_critic_optimizer = critic_optim_cls(self.q_critic.parameters(), self.lr_critic)
