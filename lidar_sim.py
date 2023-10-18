@@ -199,10 +199,10 @@ if __name__ == '__main__':
     car_lidar.add_obstacles([
             Polygon([(40, 60), (60, 60), (60, 80), (40, 80)]), 
             Polygon([(-75, -50), (-75, -75), (-50, -75)]).buffer(10), 
-            Polygon([(-75, 75), (-50, 100), (-60, 75), (-50, 50), (-75, 25), (-100, 75)], holes=([(-75, 50), (-60, 50), (-70, 60)], )),
-            LineString([(50, -75), (95, -50), (95, 50)]),
+            Polygon([(-75, 75), (-50, 100), (-60, 75), (-50, 50), (-75, 25), (-100, 75)], holes=[[(-75, 35), (-60, 50), (-75, 65)],]),
             Point(10, 10).buffer(25),
             Point(0, -75).buffer(2),
+            LineString([(50, -75), (95, -50), (95, 50)]),
             LinearRing([(75, 25), (75, 75), (100, 75)]),
             Point(-75, 0),
         ])
@@ -216,10 +216,12 @@ if __name__ == '__main__':
 
     # 创建障碍物可视化对象
     show_obstacles = []
+    show_holes = []
     for obstacle in car_lidar.obstacles:
         if isinstance(obstacle, Polygon): # 面 (Polygon 或 buffer)
             show_obstacles.append(ax.add_patch(plt.Polygon(obstacle.exterior.coords, fc='gray')))
- 
+            for hole in obstacle.interiors:
+                show_holes.append(ax.add_patch(plt.Polygon(hole.coords, fc='white')))
         elif isinstance(obstacle, Point): # 点 (没有buffer)
             show_obstacles.append(ax.add_line(plt.Line2D(*obstacle.xy, color='gray', marker='x')))
         else:                             # 线段 / 闭合线段 (没有buffer)
@@ -236,7 +238,12 @@ if __name__ == '__main__':
 
     # 动画更新
     car_path = deque(maxlen=80)
+    flag = []
     def update(frame):
+        if not flag:
+            import time
+            time.sleep(7)
+            flag.append(1)
         # 移动
         x, y, yaw = 50*np.cos(frame), 50*np.sin(frame), frame+np.pi/2
         car_path.append([x, y])
