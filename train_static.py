@@ -67,7 +67,7 @@ for episode in range(MAX_EPISODE):
             obs = deepcopy(next_obs)
     #end for
 #end for
-agent.save("Model.pkl")
+agent.save("ModelStatic.pkl")
 
 
 

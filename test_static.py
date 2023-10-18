@@ -29,7 +29,7 @@ render = True           # 是否可视化训练/评估过程(仿真速度会降�
 env = StaticPathPlanning()
 env = NormalizedActionsWrapper(env)
 agent = SAC(env.observation_space, env.action_space, memory_size=10000)
-agent.load("Model.pkl")
+agent.load("ModelStatic.pkl")
 
 
     
