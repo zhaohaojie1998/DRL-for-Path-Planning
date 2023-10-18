@@ -13,7 +13,8 @@ import math
 import pylab as pl
 from gym import spaces
 from copy import deepcopy
-
+from shapely import geometry as geo
+from shapely.plotting import plot_polygon
 
 
 
@@ -22,10 +23,11 @@ class Map:
     size = [[-10.0, -10.0], [10.0, 10.0]] # x, y最小值; x, y最大值
     start_pos = [0, -9]           # 起点坐标
     end_pos = [2.5, 9]            # 终点坐标
-    obstacle = [                  # 障碍物坐标+半径
-        [0, 2.5, 4],
-        [-6, -5, 3],
-        [6, -5, 3],
+    obstacles = [                 # 障碍物, 要求为 geo.Polygon 或 带buffer的 geo.Point/geo.LineString
+        geo.Point(0, 2.5).buffer(4),
+        geo.Point(-6, -5).buffer(3),
+        geo.Point(6, -5).buffer(3),
+        geo.Polygon([(-10, 0), (-10, 5), (-7.5, 5), (-7.5, 0)])
     ]
 
     @classmethod
@@ -38,10 +40,9 @@ class Map:
         pl.clf()
     
         # 障碍物
-        for o in cls.obstacle:
-            circle = pl.Circle((o[0], o[1]), o[2], color='k', fill=False)
-            pl.gcf().gca().add_artist(circle)
-       
+        for o in cls.obstacles:
+            plot_polygon(o, facecolor='w', edgecolor='k', add_points=False)
+
         # 起点终点
         pl.scatter(cls.start_pos[0], cls.start_pos[1], s=30, c='k', marker='x', label='起点')
         pl.scatter(cls.end_pos[0], cls.end_pos[1], s=30, c='k', marker='o', label='终点')
@@ -139,16 +140,9 @@ class StaticPathPlanning(gym.Env):
             dθall += dθ
             θ_last = deepcopy(θ)
             # 碰撞检测
-            for o in self.map.obstacle:
-                P1, P2 = traj[i], traj[i+1]
-                T, 半径 = pl.array(o[:2]), o[-1]
-                c = pl.linalg.norm(P1 - P2) # 轨迹长度
-                a = pl.linalg.norm(T - P2) # 下个点和威胁中心的距离
-                b = pl.linalg.norm(P1 - T) # 上个点和威胁中心的距离
-                if a < 半径 or b < 半径:
-                    num_crash += 1
-                elif pl.linalg.norm(pl.cross(T-P1, T-P2)) / (c + 1e-8) < 半径\
-                and c > a and c > b:
+            for o in self.map.obstacles:
+                line = geo.LineString(traj[i:i+2])
+                if o.intersects(line): # 判断是否有交集
                     num_crash += 1
             #end 
         #end
@@ -178,9 +172,8 @@ class StaticPathPlanning(gym.Env):
         pl.clf() 
 
         # 障碍物
-        for o in self.map.obstacle:
-            circle = pl.Circle((o[0], o[1]), o[2], color='k', fill=False)
-            pl.gcf().gca().add_artist(circle)
+        for o in self.map.obstacles:
+            plot_polygon(o, facecolor='w', edgecolor='k', add_points=False)
        
         # 起点终点
         pl.scatter(self.map.start_pos[0], self.map.start_pos[1], s=30, c='k', marker='x', label='起点')
@@ -216,6 +209,7 @@ class StaticPathPlanning(gym.Env):
 
 
 # 动态环境 - 新版gym接口格式
+from lidar_sim import LidarModel
 class DynamicPathPlanning(gym.Env):
     """从力学与控制的角度进行规划
     >>> dx/dt = V * cos(θ)
@@ -249,6 +243,7 @@ class DynamicPathPlanning(gym.Env):
 
 
 
+# 环境-算法适配
 class NormalizedActionsWrapper(gym.ActionWrapper):
     def __init__(self, env):
         super(NormalizedActionsWrapper, self).__init__(env)
