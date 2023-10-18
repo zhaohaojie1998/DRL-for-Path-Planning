@@ -293,7 +293,7 @@ class SAC:
         # 其它参数
         self.learn_counter = 0
     
-
+    
     def setup_nn(self, actor: Actor, critic: Q_Critic, *, actor_optim_cls=th.optim.Adam, critic_optim_cls=th.optim.Adam, copy=True):
         """修改神经网络模型, 要求按Actor/Q_Critic格式自定义网络"""
         self.actor = deepcopy(actor) if copy else actor
