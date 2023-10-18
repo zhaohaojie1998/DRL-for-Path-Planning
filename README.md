@@ -12,9 +12,19 @@ Soft Actor-Critic Algorithms and Applications （arXiv: 1812)
 
 ### 1.静态路径规划（几何）
 
+直接找几个点组成路径，学习组成路径的点
+
 ![](图片/Result.png)
 
 ### **2.动态路径规划（运动学）**
+
+雷达避障模型
+
+<img src="图片/Lidar.gif" style="zoom:200%;" />
+
+运动学仿真，学习控制量
+
+
 
 
 ## **Requirement**:
@@ -37,4 +47,8 @@ shapely >= 2.0.1 （障碍）
 
 [Path-Planning: 路径规划算法，A*、Dijstra、Hybrid A*等经典路径规划](https://github.com/zhaohaojie1998/A-Star-for-Path-Planning)
 
+<img src="图片/ad1.png" style="zoom: 67%;" />
+
 [Grey-Wolf-Optimizer-for-Path-Planning: 灰狼优化算法路径规划、多智能体/多无人机航迹规划](https://github.com/zhaohaojie1998/Grey-Wolf-Optimizer-for-Path-Planning)
+
+<img src="图片/ad2.png" style="zoom: 50%;" />
