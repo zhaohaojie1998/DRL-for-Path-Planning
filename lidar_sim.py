@@ -238,12 +238,7 @@ if __name__ == '__main__':
 
     # 动画更新
     car_path = deque(maxlen=80)
-    flag = []
     def update(frame):
-        if not flag:
-            import time
-            time.sleep(7)
-            flag.append(1)
         # 移动
         x, y, yaw = 50*np.cos(frame), 50*np.sin(frame), frame+np.pi/2
         car_path.append([x, y])
