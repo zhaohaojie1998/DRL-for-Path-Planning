@@ -107,8 +107,7 @@ class Actor(nn.Module):
         # 计算正态分布概率的对数 log[P_pi(a|s)] -> (batch, act_dim)
         if with_logprob:
             # SAC论文通过u的对数概率计算a的对数概率公式:
-            # logp_pi_a = (dist.log_prob(u) - torch.log(1 - a.pow(2) + 1e-6)).sum(dim=1, keepdim=True)
-
+            ''' logp_pi_a = (dist.log_prob(u) - torch.log(1 - a.pow(2) + 1e-6)).sum(dim=1, keepdim=True) '''
             # SAC原文公式有a=tanh(u), 导致梯度消失, OpenAI公式:
             logp_pi_a = dist.log_prob(u).sum(axis=1, keepdim=True) - (2 * (np.log(2) - u - F.softplus(-2 * u))).sum(axis=1, keepdim=True) # (batch, 1)
         else:
@@ -166,14 +165,14 @@ class EasyBuffer:
         self.idxs = [0]
         self.current_size = 0
 
-    def push(self, state, action, reward, next_state, done, terminal=None):
+    def push(self, transition, terminal=None):
         """存储"""
         # add a transition to the buffer
-        self.buffer["obs"][self.ptr] = state
-        self.buffer["next_obs"][self.ptr] = next_state
-        self.buffer["act"][self.ptr] = action
-        self.buffer["rew"][self.ptr] = reward
-        self.buffer["done"][self.ptr] = done
+        self.buffer["obs"][self.ptr] = transition[0]
+        self.buffer["act"][self.ptr] = transition[1]
+        self.buffer["rew"][self.ptr] = transition[2]
+        self.buffer["next_obs"][self.ptr] = transition[3]
+        self.buffer["done"][self.ptr] = transition[4]
         # update ptr & size
         self.ptr = (self.ptr + 1) % self.memory_size # 更新指针
         self.current_size = min(self.current_size + 1, self.memory_size) # 更新容量
@@ -294,7 +293,7 @@ class SAC:
         self.learn_counter = 0
     
     
-    def setup_nn(self, actor: Actor, critic: Q_Critic, *, actor_optim_cls=th.optim.Adam, critic_optim_cls=th.optim.Adam, copy=True):
+    def set_nn(self, actor: Actor, critic: Q_Critic, *, actor_optim_cls=th.optim.Adam, critic_optim_cls=th.optim.Adam, copy=True):
         """修改神经网络模型, 要求按Actor/Q_Critic格式自定义网络"""
         self.actor = deepcopy(actor) if copy else actor
         self.actor.train().to(self.device)
@@ -304,10 +303,13 @@ class SAC:
         self.actor_optimizer = actor_optim_cls(self.actor.parameters(), self.lr_actor)
         self.q_critic_optimizer = critic_optim_cls(self.q_critic.parameters(), self.lr_critic)
 
-
-    def store_memory(self, s, a, r, s_, d):
+    def set_buffer(self, buffer: EasyBuffer):
+        """修改replay buffer, 要求按EasyBuffer定义"""
+        self.buffer = buffer
+    
+    def store_memory(self, transition, terminal: bool = None):
         """经验存储"""
-        self.buffer.push(s, a, r, s_, d)
+        self.buffer.push(transition, terminal)
 
 
     def select_action(self, state, *, deterministic=False, **kwargs) -> np.ndarray:
