@@ -55,17 +55,17 @@ class Map:
         pl.ylim(cls.size[0][1], cls.size[1][1])   # y范围
         pl.title('Map')                           # 标题
         pl.grid()                                 # 生成网格
-        pl.grid(alpha=0.3,ls=':')                 # 改变网格透明度，和网格线的样式
+        pl.grid(alpha=0.3,ls=':')                 # 改变网格透明度，和网格线的样式、、
         pl.show(block=True)
 
         
 
 
-# 静态环境 - 老版gym接口格式
+# 静态环境
 class StaticPathPlanning(gym.Env):
     """从航点搜索的角度进行规划"""
 
-    def __init__(self, num_pos = 6, map_class = Map, max_search_steps = 200):
+    def __init__(self, num_pos = 6, map_class = Map, max_search_steps = 200, use_old_gym = True):
         """起点终点之间的导航点个数, 地图信息, 最大搜索次数
         """
         self.num_pos = num_pos
@@ -79,12 +79,17 @@ class StaticPathPlanning(gym.Env):
 
         self.__render_flag = True
         self.__reset_flag = True
+        self.__old_gym = use_old_gym
 
     def reset(self):
         self.__reset_flag = False
         self.time_steps = 0 # NOTE: 容易简写成step, 会和step method重名, 还不容易发现 BUG
         self.obs = self.observation_space.sample()
-        return self.obs
+        # New Gym: obs, info
+        # Old Gym: obs
+        if self.__old_gym:
+            return self.obs
+        return self.obs, {}
     
     def step(self, act):
         """
@@ -96,23 +101,25 @@ class StaticPathPlanning(gym.Env):
         Q = Critic(Pos_old, act) = Critic(Pos_old, Pos_new-Pos_old)
         """
         assert not self.__reset_flag, "调用step前必须先reset"
-
         # 状态转移
         obs = pl.clip(self.obs + act, self.observation_space.low, self.observation_space.high)
         self.time_steps += 1
-
         # 计算奖励
         rew, done, info = self.get_reward(obs)
-
         # 回合终止
-        if self.time_steps >= self.max_episode_steps or done:
+        truncated = self.time_steps >= self.max_episode_steps
+        if truncated or done:
             info["terminal"] = True
             self.__reset_flag = True
         else:
             info["terminal"] = False
-
+        # 更新状态
         self.obs = deepcopy(obs)
-        return obs, rew, done, info
+        # New Gym: obs, rew, done, truncated, info
+        # Old Gym: obs, rew, done, info
+        if self.__old_gym:
+            return obs, rew, done, info
+        return obs, rew, done, truncated, info
     
     def get_reward(self, obs):
         traj = pl.array(self.map.start_pos + obs.tolist() + self.map.end_pos) # [x,y,x,y,x,y,...]
@@ -148,7 +155,7 @@ class StaticPathPlanning(gym.Env):
         #end
         
         rew = -d -dθall/self.num_pos -num_theta -num_crash -num_over
-            
+
         if num_theta == 0 and num_crash == 0:
             rew += 100  # 给个终端奖励
             done = True # 轨迹合理
@@ -208,7 +215,7 @@ class StaticPathPlanning(gym.Env):
 
 
 
-# 动态环境 - 新版gym接口格式
+# 动态环境
 from lidar_sim import LidarModel
 class DynamicPathPlanning(gym.Env):
     """从力学与控制的角度进行规划
@@ -220,10 +227,10 @@ class DynamicPathPlanning(gym.Env):
     
     """
 
-    def __init__(self, dt):
+    def __init__(self, dt, use_old_gym=True):
         pass
 
-    def reset(self, *args, **kwargs):
+    def reset(self, mode=0):
         self.__reset_flag = False
         obs, info = None, None
         return obs, info
