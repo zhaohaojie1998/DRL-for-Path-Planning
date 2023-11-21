@@ -13,6 +13,7 @@ import math
 import pylab as pl
 from gym import spaces
 from copy import deepcopy
+from collections import deque
 from scipy.integrate import odeint
 from shapely import geometry as geo
 from shapely.plotting import plot_polygon
@@ -262,7 +263,7 @@ class DynamicPathPlanning(gym.Env):
         self.control_space = spaces.Box(self.CTRL_LOW, self.CTRL_HIGH)
 
         # 观测空间 + 动作空间
-        obs_point = spaces.Box(0, self.SCAN_RANGE, (self.SCAN_NUM, ))
+        obs_point = spaces.Box(0, self.SCAN_RANGE, (4, self.SCAN_NUM, )) # batch, seq_len, dim
         obs_state = spaces.Box(self.OBS_STATE_LOW, self.OBS_STATE_HIGH)
         self.observation_space = spaces.Dict({'point': obs_point, 'state': obs_state})
         self.action_space = spaces.Box(-1, 1, (len(self.CTRL_LOW), ))
