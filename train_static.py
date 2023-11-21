@@ -53,7 +53,7 @@ for episode in range(MAX_EPISODE):
         ep_reward += reward
         
         # 缓存
-        agent.store_memory(obs, act, reward, next_obs, done)
+        agent.store_memory((obs, act, reward, next_obs, done))
         
         # 优化
         agent.learn()
