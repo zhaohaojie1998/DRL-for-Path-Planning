@@ -6,13 +6,27 @@ Created on Tue Aug  1 18:00:37 2023
 """
 
 import numpy as np
-from shapely import affinity, Polygon, Point, LineString, LinearRing
+from shapely import affinity
+from shapely import Polygon, Point, LineString, LinearRing
 #MakeCircle = lambda position, radius: Point(position).buffer(radius)
 
 from typing import Union
 ObstacleLike = Union[Polygon, Point, LineString, LinearRing]
 
-__all__ = ['LidarModel', 'Polygon', 'Point', 'LineString', 'LinearRing']
+__all__ = ['LidarModel', 'plot_shapely']
+
+
+
+# 绘制shapely的图形
+def plot_shapely(geom, ax=None, color=None):
+    from shapely import geometry as geo
+    from shapely.plotting import plot_line, plot_points, plot_polygon
+    if isinstance(geom, (geo.MultiPolygon, geo.Polygon)):
+        plot_polygon(geom, ax, False, color)
+    elif isinstance(geom, (geo.MultiPoint, geo.Point)):
+        plot_points(geom, ax, color, marker='x') # 点没有形状, 为了和小圆区分, 用x表示
+    elif isinstance(geom, (geo.MultiLineString, geo.LineString, geo.LinearRing)):
+        plot_line(geom, ax, False, color)
 
 
 
@@ -33,22 +47,30 @@ class LidarModel:
         self.__angles = np.deg2rad(np.linspace(-self.scan_angle/2, self.scan_angle/2, self.num_angle)) # rad
         self.__d = self.max_range
         # 障碍物
-        self.__obstacles: list[ObstacleLike] = []
+        self.__obstacles: list[ObstacleLike] = [] # 障碍物形状
+        self.__obstacle_intensities: list[int] = [] # 障碍物反射强度
 
     @property
     def obstacles(self):
         """所有障碍物"""
         return self.__obstacles
 
-    def add_obstacles(self, obstacles: Union[ObstacleLike, list[ObstacleLike]]):
+    def add_obstacles(self, obstacles: Union[ObstacleLike, list[ObstacleLike]], intensities: Union[int, list[int]]=255):
         """添加/初始化障碍物
         Args:
-            obstacle (ObstacleLike, list[ObstacleLike]): 障碍物.
+            obstacles (ObstacleLike, list[ObstacleLike]): 障碍物.
+            intensities (int, list[int]): 障碍物反射强度, 0~255.
         """
         if isinstance(obstacles, list):
+            if isinstance(intensities, list):
+                assert len(obstacles) == len(intensities), "障碍物个数必须和反射强度个数相同"
+            else:
+                intensities = [intensities] * len(obstacles)
             self.__obstacles.extend(obstacles)
+            self.__obstacle_intensities.extend(intensities)
         else:
             self.__obstacles.append(obstacles)
+            self.__obstacle_intensities.append(intensities)
     
     def move_obstacle(self, index: int, dx: float, dy: float, drot: float = 0.0):
         """移动和旋转障碍物
@@ -63,43 +85,42 @@ class LidarModel:
             obstacle = affinity.rotate(obstacle, drot, use_radians=True)
         obstacle = affinity.translate(obstacle, dx, dy)
         self.__obstacles[index] = obstacle
-        return obstacle
     
-    def scan(self, x: float, y: float, yaw: float, *, abs_return=False):
+    def scan(self, x: float, y: float, yaw: float, *, mode=0):
         """扫描
+
         Args:
-            x (float): x坐标(m).
-            y (float): y坐标(m).
+            x (float): x坐标(m).\n
+            y (float): y坐标(m).\n
             yaw (float): 偏航角(rad).\n
-            abs_return (bool): 是否返回障碍绝对坐标, 默认False.
+            mode (int): 返回模式(默认0)\n
+
         Returns:
-            距离点云数据 (ndarray), -1表示没有障碍, shape = (num_angle, ).\n
-            障碍绝对坐标 (list), len0 = 0 ~ num_angle, len1 = 2.
+            scan_data (ndarray): 激光扫描数据, shape = (3, num_angle), 第0维为扫描角度, 第1维为测距(-1表示没障碍), 第2维表示点云强度(0表示没障碍).\n
+            scan_points (list[list], mode!=0): 测量到的障碍点的位置, 空list无障碍, len0 = 0~num_angle, len1 = 2.\n
         """
-        scan_data = -np.ones_like(self.__angles) if not abs_return else []
+        scan_data = np.vstack((self.__angles, -np.ones_like(self.__angles), np.zeros_like(self.__angles))) # (3, num_angle)
+        scan_points = []
         for i, angle in enumerate(self.__angles):
             line = LineString([
                 (x, y), 
                 (x + self.__d * np.cos(yaw + angle), y + self.__d * np.sin(yaw + angle))
             ])
-            P, distance = self.__compute_intersection(line)
+            P, distance, intensity = self.__compute_intersection(line)
             if P is not None:
-                if not abs_return:
-                    scan_data[i] = distance
-                else:
-                    scan_data.append(P)
+                scan_data[1][i] = distance
+                scan_data[2][i] = intensity
+                if mode != 0:
+                    scan_points.append(P)
         #end one scan
-        return scan_data
-    
-    def get_angle(self, idx: int):
-        """获取第idx个距离对应的姿态角度(rad)"""
-        return self.__angles[idx]
+        return scan_data if mode == 0 else (scan_data, scan_points)
     
     def __compute_intersection(self, line: LineString):
-        """获取激光与障碍物的交点、距离"""
+        """获取激光与障碍物的交点、测量距离、反射强度"""
         P_nearest = None
-        distance = self.__d
-        for obstacle in self.__obstacles:
+        distance = self.__d # 距离 0-max_range
+        intensity = None    # 点云强度 0-255
+        for obstacle, obstacle_intensity in zip(self.__obstacles, self.__obstacle_intensities):
             #if obstacle.intersects(line): # 判断是否有交集
             intersections = obstacle.intersection(line) # 线段和图形的交集: 点或线 / Multi, 不可能是MultiPolygon
             if intersections.is_empty:
@@ -114,31 +135,21 @@ class LidarModel:
                     if d < distance:
                         distance = d
                         P_nearest = list(P) # [x, y]
+                        intensity = obstacle_intensity
                 #end for
             #end for
         #end for
-        return P_nearest, distance
+        return P_nearest, distance, intensity
     
 
 
 
-# # 绘制shapely的图形
-# def plot_obstacles(obstacles: Union[ObstacleLike, list[ObstacleLike]], ax=None, *, color='gray'):
-#     """绘制Polygon、Point、LineString、LinearRing图形"""
-#     if ax is None:
-#         import matplotlib.pyplot as plt
-#         ax = plt.gca()
 
-#     if isinstance(obstacles, list):
-#         for obstacle in obstacles:
-#             plot_obstacles(obstacle, ax, color=color)
-#     else:
-#         if isinstance(obstacles, Polygon): # 面 (Polygon 或 buffer)
-#             ax.add_patch(plt.Polygon(obstacles.exterior.coords, closed=True, fc=color))
-#         elif isinstance(obstacles, Point): # 点 (没有buffer)
-#             ax.add_line(plt.Line2D(obstacles.x, obstacles.y, color=color, marker='x'))
-#         else:                             # 线段 / 闭合线段 (没有buffer)
-#             ax.add_line(plt.Line2D(*obstacles.xy, color=color))
+
+
+
+
+
 
 
 
@@ -205,79 +216,89 @@ if __name__ == '__main__':
             LineString([(50, -75), (95, -50), (95, 50)]),
             LinearRing([(75, 25), (75, 75), (100, 75)]),
             Point(-75, 0),
-        ])
+        ], 
+        [50, 100, 150, 255, 10, 200, 120, 0] # 材质
+        )
+    #fig, ([ax0, ax1, ax2]) = plt.subplots(1, 3, figsize=(15, 4)) # 1*3的网格
 
-    # 创建可视化窗口
-    fig, ax = plt.subplots()
-    ax.grid(True)
-    ax.set_aspect("equal")
-    ax.set_xlim(-100, 100)
-    ax.set_ylim(-100, 100)
 
-    # 创建障碍物可视化对象
-    show_obstacles = []
-    show_holes = []
-    for obstacle in car_lidar.obstacles:
-        if isinstance(obstacle, Polygon): # 面 (Polygon 或 buffer)
-            show_obstacles.append(ax.add_patch(plt.Polygon(obstacle.exterior.coords, fc='gray')))
-            for hole in obstacle.interiors:
-                show_holes.append(ax.add_patch(plt.Polygon(hole.coords, fc='white')))
-        elif isinstance(obstacle, Point): # 点 (没有buffer)
-            show_obstacles.append(ax.add_line(plt.Line2D(*obstacle.xy, color='gray', marker='x')))
-        else:                             # 线段 / 闭合线段 (没有buffer)
-            show_obstacles.append(ax.add_line(plt.Line2D(*obstacle.xy, color='gray')))
+    # A.创建绘图窗口
+    fig = plt.figure(num=1, figsize=(15, 8)) # 创建窗口
+    gs = fig.add_gridspec(2, 2)              # 创建2*2网格
+    ax0 = fig.add_subplot(gs[:, 0])
+    ax1 = fig.add_subplot(gs[0, 1], projection='polar') # 创建polar极坐标
+    ax2 = fig.add_subplot(gs[1, 1])
     
-    # 创建扫描区域可视化对象
-    show_scan_points, = ax.plot([], [], 'ro', markersize=2.5)
-    show_scan_left, = ax.plot([], [], 'g--', linewidth=0.5)
-    show_scan_right, = ax.plot([], [], 'g--', linewidth=0.5)
-
-    # 创建车辆轨迹可视化对象
-    show_car_path, = ax.plot([], [], 'k-.', linewidth=1.5)
-    show_car_point, = ax.plot([], [], 'bo')
-
-    # 动画更新
+    # B.动画更新
     car_path = deque(maxlen=80)
     def update(frame):
         # 移动
         x, y, yaw = 50*np.cos(frame), 50*np.sin(frame), frame+np.pi/2
         car_path.append([x, y])
-        
-        show_car_path.set_data(np.array(car_path).T)
-        show_car_point.set_data(x, y)
 
-        # 移动0号障碍物
-        obstacle = car_lidar.move_obstacle(0, -2.5*np.sin(frame), 0, -frame/70)
-        if isinstance(obstacle, Polygon):
-            show_obstacles[0].set_xy(np.array(obstacle.exterior.coords))
-        else:
-            show_obstacles[0].set_data(*obstacle.xy)
+        car_lidar.move_obstacle(0, -2.5*np.sin(frame), 0, -frame/70) # 移动0号障碍物
+        car_lidar.move_obstacle(1, 0, 0, 0.03) # 旋转1号障碍物
         
-        # 旋转1号障碍物
-        obstacle = car_lidar.move_obstacle(1, 0, 0, 0.03)
-        if isinstance(obstacle, Polygon):
-            show_obstacles[1].set_xy(np.array(obstacle.exterior.coords))
-        else:
-            show_obstacles[1].set_data(*obstacle.xy)
-
         # 扫描
-        scan_data = car_lidar.scan(x, y, yaw, abs_return=True)
+        scan_data, scan_points = car_lidar.scan(x, y, yaw, mode=1)
+        scan_angles = scan_data[0]
+        scan_distances = scan_data[1]
+        scan_intensities = scan_data[2]
+        scan_distances[scan_distances == -1] = np.inf
         
-        if scan_data:
-            points = np.array(scan_data)
-            show_scan_points.set_data(points[:, 0], points[:, 1])
-        else:
-            show_scan_points.set_data([], [])
+        # 0.轨迹可视化
+        ax0.clear()
+        ax0.set_title('Trajectory')
+        ax0.set_aspect("equal")
+        ax0.set_xlim(-100, 100)
+        ax0.set_ylim(-100, 100)
+        ax0.set_xlabel('X')
+        ax0.set_ylabel('Y')
+        ax0.grid(True)
+
+        for obstacle in car_lidar.obstacles:
+            plot_shapely(obstacle, ax0) # 障碍
         
+        ax0.plot(*np.array(car_path).T, 'k-.', linewidth=1.5) # 轨迹
+        ax0.plot(x, y, 'bo') # 质点
+
+        if scan_points:
+            ax0.plot(*np.array(scan_points).T, 'ro', markersize=2.5) # 点云
+
         x1 = x + car_lidar.max_range * np.cos(yaw + np.deg2rad(car_lidar.scan_angle/2))
-        x2 = x + car_lidar.max_range * np.cos(yaw - np.deg2rad(car_lidar.scan_angle/2))
         y1 = y + car_lidar.max_range * np.sin(yaw + np.deg2rad(car_lidar.scan_angle/2))
+        ax0.plot([x, x1], [y, y1], 'm--', linewidth=0.5) # 左扫描区域
+
+        x2 = x + car_lidar.max_range * np.cos(yaw - np.deg2rad(car_lidar.scan_angle/2))
         y2 = y + car_lidar.max_range * np.sin(yaw - np.deg2rad(car_lidar.scan_angle/2))
-        show_scan_left.set_data([x, x1], [y, y1])
-        show_scan_right.set_data([x, x2], [y, y2])
-        
-    # 创建动画对象
+        ax0.plot([x, x2], [y, y2], 'm--', linewidth=0.5) # 右扫描区域
+
+        # 1.激光雷达可视化
+        ax1.clear()
+        ax1.set_title('Lidar')
+        ax1.set_theta_direction(1)       # 极坐标旋转方向, -1顺时针, 默认1逆时针
+        ax1.set_theta_zero_location('N') # 极坐标 0°轴指向
+        ax1.set_thetagrids([0, 45, 90, 135, 180, 225, 270, 315], ['0°', '45°', '90°', '135°', '180°', '-135°', '-90°', '-45°'])
+        ax1.set_rlim([0, car_lidar.max_range])
+        ax1.set_rlabel_position(0)
+        # ax1.set_xticks(np.deg2rad([0, 45, 90, 135, 180, 225, 270, 315]))                   # 设置刻度位置 # note: θ轴是deg制
+        # ax1.set_xticklabels(['0°', '45°', '90°', '135°', '180°', '-135°', '-90°', '-45°']) # 设置刻度名称
+        ax1.scatter(scan_angles, scan_distances, s=2.5, c=scan_intensities, cmap='jet_r', vmin=0, vmax=255) # note: x轴是rad制
+        ax1.plot([scan_angles[0]]*2, [0, car_lidar.max_range], 'm--', linewidth=0.5)
+        ax1.plot([scan_angles[-1]]*2, [0, car_lidar.max_range], 'm--', linewidth=0.5)
+    
+        # 2.距离深度图像可视化
+        ax2.clear()
+        ax2.set_title('Depth Image')
+        ax2.set_aspect('auto')
+        ax2.set_xticks([])
+        ax2.set_yticks([])
+        ax2.imshow([scan_distances[::-1]]*10, cmap='gray', vmin=0, vmax=car_lidar.max_range) # 10 * num_angle的图片
+    #end update
+
+    # C.创建动画对象
     ani = FuncAnimation(fig, update, frames=np.linspace(0, 2 * np.pi, 100), interval=5)
+    ani.save('LidarSimulation.gif', writer='pillow', fps=60)
     plt.show()
     
 
