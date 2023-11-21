@@ -13,10 +13,11 @@ import math
 import pylab as pl
 from gym import spaces
 from copy import deepcopy
+from scipy.integrate import odeint
 from shapely import geometry as geo
 from shapely.plotting import plot_polygon
 
-
+__all__ = ["StaticPathPlanning", "DynamicPathPlanning", "NormalizedActionsWrapper"]
 
 
 class Map:
@@ -65,11 +66,14 @@ class Map:
 class StaticPathPlanning(gym.Env):
     """从航点搜索的角度进行规划"""
 
-    def __init__(self, num_pos = 6, map_class = Map, max_search_steps = 200, use_old_gym = True):
-        """起点终点之间的导航点个数, 地图信息, 最大搜索次数
+    # 地图设置
+    MAP = Map()
+
+    def __init__(self, num_pos=6, max_search_steps=200, use_old_gym=True):
+        """起点终点之间的导航点个数, 最大搜索次数, 是否采用老版接口
         """
         self.num_pos = num_pos
-        self.map = map_class
+        self.map = self.MAP
         self.max_episode_steps = max_search_steps
 
         lb = pl.array(self.map.size[0] * num_pos)
@@ -153,7 +157,7 @@ class StaticPathPlanning(gym.Env):
                     num_crash += 1
             #end 
         #end
-        
+
         rew = -d -dθall/self.num_pos -num_theta -num_crash -num_over
 
         if num_theta == 0 and num_crash == 0:
@@ -177,19 +181,15 @@ class StaticPathPlanning(gym.Env):
 
         # 清除原图像
         pl.clf() 
-
         # 障碍物
         for o in self.map.obstacles:
             plot_polygon(o, facecolor='w', edgecolor='k', add_points=False)
-       
         # 起点终点
         pl.scatter(self.map.start_pos[0], self.map.start_pos[1], s=30, c='k', marker='x', label='起点')
         pl.scatter(self.map.end_pos[0], self.map.end_pos[1], s=30, c='k', marker='o', label='终点')
-
         # 轨迹
         traj = self.map.start_pos + self.obs.tolist() + self.map.end_pos # [x,y,x,y,x,y,]
         pl.plot(traj[::2], traj[1::2], label='path', color='b')
-
         #pl.legend(loc='best').set_draggable(True) # 显示图例
         pl.legend(loc='best')
         pl.axis('equal')                          # 平均坐标
@@ -217,26 +217,75 @@ class StaticPathPlanning(gym.Env):
 
 # 动态环境
 from lidar_sim import LidarModel
+class Logger:
+    pass
 class DynamicPathPlanning(gym.Env):
     """从力学与控制的角度进行规划
-    >>> dx/dt = V * cos(θ)
-    >>> dy/dt = V * sin(θ)
-    >>> dθ/dt = V/L * tan(δ)
-    >>> dV/dt = a
-    >>> u = [a, δ]
-    
+    >>> dx/dt = V * cos(ψ)
+    >>> dz/dt = -V * sin(ψ)
+    >>> dV/dt = g * nx
+    >>> dψ/dt = -g / V * tan(μ)
+    >>> u = [nx, μ]
+    obs_state space = [d_start, ε_start, d_end, ε_end, V, ψ]
     """
 
-    def __init__(self, dt, use_old_gym=True):
-        pass
+    # 地图设置   ↓↓↓↓ 下述参数设置均与地图尺寸有关 ↓↓↓↓
+    MAP = Map()
+    # 动力学状态区间设置
+    STATE_LOW = [-10, -10, 0.05, -math.pi] # x, z, V, ψ
+    STATE_HIGH = [10, 10, 0.2, math.pi]    # x, z, V, ψ
+    # 观测状态区间设置
+    OBS_STATE_LOW = [0, -math.pi, 0, -math.pi, 0.05, -math.pi]      # 相对起点距离 + 相对起点方位角 rad + 相对终点距离 + 相对终点方位角 rad + 速度 + 偏角
+    OBS_STATE_HIGH = [14.14, math.pi, 14.14, math.pi, 0.2, math.pi] # 相对起点距离 + 相对起点方位角 rad + 相对终点距离 + 相对终点方位角 rad + 速度 + 偏角
+    # 控制区间设置
+    CTRL_LOW = [-0.02, -math.pi/3] # 切向过载 + 速度滚转角 rad
+    CTRL_HIGH = [0.02, math.pi/3]  # 切向过载 + 速度滚转角 rad
+    # 雷达扫描设置
+    SCAN_RANGE = 5   # 扫描距离
+    SCAN_ANGLE = 128 # 扫描范围 deg
+    SCAN_NUM = 64    # 扫描点个数
+
+    def __init__(self, max_episode_steps=200, safe_radius=0.5, dt=0.5, use_old_gym=True):
+        """最大回合步数, 安全距离, 积分步长, 是否采用老版接口
+        """
+        # 仿真
+        self.dt = dt
+        self.max_episode_steps = max_episode_steps
+        self.map = self.MAP
+        self.obstacles = self.map.obstacles
+        self.obstacles_buf = [o.buffer(safe_radius) for o in self.obstacles]
+        self.lidar = LidarModel(self.SCAN_RANGE, self.SCAN_ANGLE, self.SCAN_NUM)
+        self.lidar.add_obstacles(self.obstacles)
+
+        # 状态空间 + 控制空间
+        self.state_space = spaces.Box(self.STATE_LOW, self.STATE_HIGH)
+        self.control_space = spaces.Box(self.CTRL_LOW, self.CTRL_HIGH)
+
+        # 观测空间 + 动作空间
+        obs_point = spaces.Box(0, self.SCAN_RANGE, (self.SCAN_NUM, ))
+        obs_state = spaces.Box(self.OBS_STATE_LOW, self.OBS_STATE_HIGH)
+        self.observation_space = spaces.Dict({'point': obs_point, 'state': obs_state})
+        self.action_space = spaces.Box(-1, 1, (len(self.CTRL_LOW), ))
+        
+        self.__render_flag = True
+        self.__reset_flag = True
+        self.__old_gym = use_old_gym
 
     def reset(self, mode=0):
+        """mode=0, 随机初始化位置
+           mode=1, 初始化位置到起点
+        """
         self.__reset_flag = False
         obs, info = None, None
+        if self.__old_gym:
+            return obs
         return obs, info
     
     def step(self, act):
         obs, rew, done, truncated, info = None, None, None, None, None
+
+        if self.__old_gym:
+            return obs, rew, done, info
         return obs, rew, done, truncated, info
     
     def render(self, mode="human"):
@@ -244,6 +293,100 @@ class DynamicPathPlanning(gym.Env):
 
     def close(self):
         pass
+
+    
+
+    @staticmethod
+    def _limit_angle(x, domain=1):
+        """限制角度 x 的区间: 1限制在(-π, π], 2限制在[0, 2π)"""
+        x = x - x//(2*math.pi) * 2*math.pi # any -> [0, 2π)
+        if domain == 1 and x > math.pi:
+            return x - 2*math.pi           # [0, 2π) -> (-π, π]
+        return x
+
+    @staticmethod
+    def _linear_mapping(x, x_min, x_max, left=0.0, right=1.0):  
+        """x 线性变换: [x_min, x_max] -> [left, right]"""
+        y = left + (right - left) / (x_max - x_min) * (x - x_min)
+        return y
+    
+    @staticmethod
+    def _vector_angle(x_vec, y_vec, EPS=1e-8):
+        """计算向量 x_vec 与 y_vec 之间的夹角 [0, π]"""
+        x = pl.linalg.norm(x_vec) * pl.linalg.norm(y_vec)
+        if x < EPS:
+            return math.pi/2
+        return math.acos(pl.dot(x_vec, y_vec) / x)
+    
+    @staticmethod
+    def _compute_azimuth(pos1, pos2, use_3d_pos=False):
+        """计算pos2相对pos1的方位角 [-π, π] 和高度角(3D情况) [-π/2, π/2] """
+        if use_3d_pos:
+            x, y, z = pl.array(pos2) - pos1
+            q = math.atan(y / math.sqrt(x**2 + z**2 + 1e-8)) # 高度角 [-π/2, π/2]
+            ε = math.atan2(-z, x)                            # 方位角 [-π, π]
+            return ε, q
+        else:
+            x, z = pl.array(pos2) - pos1
+            return math.atan2(-z, x)
+    
+    @staticmethod
+    def _fixed_wing_2d(s, t, u):
+        """平面运动ode模型
+        s = [x, z, V, ψ]
+        u = [nx, μ]
+        """
+        _, _, V, ψ = s
+        nx, μ = u
+        dsdt = [
+            V * math.cos(ψ),
+            -V * math.sin(ψ),
+            9.8 * nx,
+            -9.8/V * math.tan(μ) # μ<90, 不存在inf情况
+        ]
+        return dsdt
+    
+    @staticmethod
+    def _fixed_wing_3d(s, t, u):
+        """空间运动ode模型
+        s = [x, y, z, V, θ, ψ]
+        u = [nx, ny, μ]
+        """
+        _, _, _, V, θ, ψ = s
+        nx, ny, μ = u
+        if abs(math.cos(θ)) < 0.01:
+            dψdt = 0 # θ = 90° 没法积分了!!!
+        else:
+            dψdt = -9.8 * ny*math.sin(μ) / (V*math.cos(θ))
+        dsdt = [
+            V * math.cos(θ) * math.cos(ψ),
+            V * math.sin(θ),
+            -V * math.cos(θ) * math.sin(ψ),
+            9.8 * (nx - math.sin(θ)),
+            9.8/V * (ny*math.cos(μ) - math.cos(θ)),
+            dψdt
+        ]
+        return dsdt
+    
+    @classmethod
+    def _ode45(cls, s_old, u, dt, use_3d_model=False):
+        """微分方程积分"""
+        model = cls._fixed_wing_3d if use_3d_model else cls._fixed_wing_2d
+        s_new = odeint(model, s_old, (0.0, dt), args=(u, )) # shape=(len(t), len(s))
+        return pl.array(s_new[-1]) # deepcopy
+
+  
+    
+
+
+
+
+
+
+
+
+
+
 
 
 
