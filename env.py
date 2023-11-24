@@ -259,12 +259,12 @@ class DynamicPathPlanning(gym.Env):
         self.lidar.add_obstacles(self.obstacles)
 
         # 状态空间 + 控制空间
-        self.state_space = spaces.Box(self.STATE_LOW, self.STATE_HIGH)
-        self.control_space = spaces.Box(self.CTRL_LOW, self.CTRL_HIGH)
+        self.state_space = spaces.Box(pl.array(self.STATE_LOW), pl.array(self.STATE_HIGH))
+        self.control_space = spaces.Box(pl.array(self.CTRL_LOW), pl.array(self.CTRL_HIGH))
 
         # 观测空间 + 动作空间
-        obs_point = spaces.Box(0, self.SCAN_RANGE, (4, self.SCAN_NUM, )) # batch, seq_len, dim
-        obs_state = spaces.Box(self.OBS_STATE_LOW, self.OBS_STATE_HIGH)
+        obs_point = spaces.Box(0, pl.array(self.SCAN_RANGE), (4, self.SCAN_NUM, )) # batch, seq_len, dim
+        obs_state = spaces.Box(pl.array(self.OBS_STATE_LOW), pl.array(self.OBS_STATE_HIGH))
         self.observation_space = spaces.Dict({'point': obs_point, 'state': obs_state})
         self.action_space = spaces.Box(-1, 1, (len(self.CTRL_LOW), ))
         
