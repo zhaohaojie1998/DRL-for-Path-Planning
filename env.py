@@ -324,7 +324,7 @@ class DynamicPathPlanning(gym.Env):
         """计算pos2相对pos1的方位角 [-π, π] 和高度角(3D情况) [-π/2, π/2] """
         if use_3d_pos:
             x, y, z = pl.array(pos2) - pos1
-            q = math.atan(y / math.sqrt(x**2 + z**2 + 1e-8)) # 高度角 [-π/2, π/2]
+            q = math.atan(y / ((x**2 + z**2)**0.5 + 1e-8)) # 高度角 [-π/2, π/2]
             ε = math.atan2(-z, x)                            # 方位角 [-π, π]
             return ε, q
         else:
