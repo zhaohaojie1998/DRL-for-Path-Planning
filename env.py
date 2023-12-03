@@ -315,9 +315,12 @@ class DynamicPathPlanning(gym.Env):
     def _vector_angle(x_vec, y_vec, EPS=1e-8):
         """计算向量 x_vec 与 y_vec 之间的夹角 [0, π]"""
         x = pl.linalg.norm(x_vec) * pl.linalg.norm(y_vec)
-        if x < EPS:
+        y = pl.dot(x_vec, y_vec)
+        if x < EPS: # 0向量情况
+            return 0.0
+        if y < EPS: # 90°情况
             return math.pi/2
-        return math.acos(pl.clip(pl.dot(x_vec, y_vec) / x, -1, 1)) # note: x很小的时候, 可能会超过+-1
+        return math.acos(pl.clip(y/x, -1, 1)) # note: x很小的时候, 可能会超过+-1
     
     @staticmethod
     def _compute_azimuth(pos1, pos2, use_3d_pos=False):
