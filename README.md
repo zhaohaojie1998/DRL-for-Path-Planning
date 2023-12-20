@@ -24,6 +24,10 @@ Soft Actor-Critic Algorithms and Applications （arXiv: 1812)
 
 运动学仿真，学习控制量
 
+（先放张效果图，写完论文过完年再更）
+
+![](图片/amagi.png)
+
 
 
 
