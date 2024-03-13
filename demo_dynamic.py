@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-静态路径规划示例
+动态路径规划示例
  Created on Wed Mar 13 2024 18:18:07
  Modified on 2024-3-13 18:18:07
  
@@ -23,7 +23,7 @@ from copy import deepcopy
 class EncoderNet(nn.Module):
     def __init__(self, obs_space, feature_dim):
         super(EncoderNet, self).__init__()
-        point_shape = obs_space['point'].shape
+        c, point_dim = obs_space['point'].shape
         state_dim = obs_space['state'].shape[0]
         self.cnn = nn.Sequential(
 
