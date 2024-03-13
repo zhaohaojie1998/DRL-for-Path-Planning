@@ -103,7 +103,7 @@ class BaseBuffer:
         Returns
         -------
         Dict[str, Union[ObsBatch, ActBatch, th.FloatTensor]]
-            返回 "s", "a", "r", "s_", "done", "IS_weight", ... 的GPU版Tensor/MixedTensor存储形式
+            要求返回key为 "s", "a", "r", "s_", "done", "IS_weight", ... 的GPU版Tensor/MixedTensor存储形式
         """  
         raise NotImplementedError
 
@@ -128,8 +128,8 @@ class BaseBuffer:
     @abstractmethod
     def state_to_tensor(self, state: Obs, use_rnn=False) -> ObsBatch:
         """select_action调用, 将单个state转换成张量
-        use_rnn = False : (1, *state_shape)
-        use_rnn = True : (1, 1, *state_shape)
+        use_rnn = False : (*state_shape, ) -> (1, *state_shape)
+        use_rnn = True : (*state_shape, ) -> (1, 1, *state_shape)
         """
         raise NotImplementedError
     
@@ -169,7 +169,7 @@ class BaseBuffer:
 
 #----------------------------- ↓↓↓↓↓ Soft Actor-Critic ↓↓↓↓↓ ------------------------------#
 
-# Q网络
+# 1.Q网络
 class SAC_Critic(nn.Module):
     def __init__(self, encoder: nn.Module, q1_layer: nn.Module, q2_layer: nn.Module):
         """设置SAC的Critic
@@ -191,7 +191,7 @@ class SAC_Critic(nn.Module):
 
 
 
-# PI网络
+# 2.PI网络
 class SAC_Actor(nn.Module):
     def __init__(self, encoder: nn.Module, mu_layer: nn.Module, log_std_layer: nn.Module, log_std_max=2.0, log_std_min=-20.0):
         """设置SAC的Actor
@@ -236,8 +236,7 @@ class SAC_Actor(nn.Module):
     
 
 
-# SAC-1812 Agent
-# 论文:《Soft Actor-Critic Algorithms and Applications》
+# 3.SAC-1812 Agent
 class SAC_Agent:
     """Soft Actor-Critic (arXiv: 1812) 算法"""
    
