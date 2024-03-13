@@ -273,8 +273,8 @@ class DynamicPathPlanning(gym.Env):
         self.__old_gym = use_old_gym
 
     def reset(self, mode=0):
-        """mode=0, 随机初始化位置
-           mode=1, 初始化位置到起点
+        """mode=0, 随机初始化起点终点
+           mode=1, 初始化起点终点到地图设置
         """
         self.__reset_flag = False
         obs, info = None, None
