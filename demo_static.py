@@ -76,7 +76,7 @@ for episode in range(MAX_EPISODE):
             env.render()
         # 决策
         obs_tensor = th.FloatTensor(obs).unsqueeze(0).to("cpu")
-        act = policy.act(obs)
+        act = policy.act(obs_tensor)
         # 仿真
         next_obs, _, _, info = env.step(act)
         # 回合结束
