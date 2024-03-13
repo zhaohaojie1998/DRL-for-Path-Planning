@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-训练示例
+策略训练示例
  Created on Sat Nov 04 2023 15:37:28
  Modified on 2023-11-4 15:37:28
  
@@ -23,6 +23,7 @@ from sac_agent import *
 # 1.定义经验回放（取决于观测和动作数据结构）
 class Buffer(BaseBuffer):
     def __init__(self, memory_size, obs_space, act_space):
+        super(Buffer, self).__init__()
         # assert isinstance(obs_space, gym.spaces.Box), "只能存取Box数据"
         # assert isinstance(act_space, gym.spaces.Box), "只能存取Box数据"
         # 数据类型表示
@@ -39,10 +40,10 @@ class Buffer(BaseBuffer):
         act_shape = obs_space.shape or (1, )
         self._data = {}
         self._data["s"] = np.empty((memory_size, *obs_shape), dtype=obs_space.dtype) # (size, *obs_shape, )连续 (size, 1)离散
-        self._data["s_"] = deepcopy(self._data["s"])                              # (size, *obs_shape, )连续 (size, 1)离散
+        self._data["s_"] = deepcopy(self._data["s"])                                 # (size, *obs_shape, )连续 (size, 1)离散
         self._data["a"] = np.empty((memory_size, *act_shape), dtype=act_space.dtype) # (size, *act_shape, )连续 (size, 1)离散
         self._data["r"] = np.empty((memory_size, 1), dtype=np.float32)               # (size, 1)
-        self._data["d"] = np.empty((memory_size, 1), dtype=bool)                     # (size, 1) 
+        self._data["done"] = np.empty((memory_size, 1), dtype=bool)                  # (size, 1) 
 
     def reset(self, *args, **kwargs):
         self._ptr = 0
@@ -58,7 +59,7 @@ class Buffer(BaseBuffer):
         self._data["a"][self._ptr] = transition[1]
         self._data["r"][self._ptr] = transition[2]
         self._data["s_"][self._ptr] = transition[3]
-        self._data["d"][self._ptr] = transition[4]
+        self._data["done"][self._ptr] = transition[4]
         self._ptr = (self._ptr + 1) % self._memory_size                     # 更新指针
         self._current_size = min(self._current_size + 1, self._memory_size) # 更新容量
 
@@ -74,29 +75,42 @@ class Buffer(BaseBuffer):
         return th.FloatTensor(state).unsqueeze(0).to(self.device)
     
 # 2.定义神经网络（取决于观测数据结构）
-class QNet(nn.Module):
-    def __init__(self, obs_dim, act_dim):
+class EncoderNet(nn.Module):
+    def __init__(self, obs_shape, feature_dim):
+        super(EncoderNet, self).__init__()
+        obs_dim = np.prod(obs_shape)
         self.mlp = nn.Sequential(
-            nn.Linear(obs_dim+act_dim, 128),
+            nn.Linear(obs_dim, feature_dim),
+            nn.ReLU(True),
+        )
+    def forward(self, obs):
+        return self.mlp(obs)
+
+class QNet(nn.Module):
+    def __init__(self, feature_dim, act_dim):
+        super(QNet, self).__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(feature_dim+act_dim, 128),
             nn.ReLU(True),
             nn.Linear(128, 64),
             nn.ReLU(True),
-            nn.Linear(64, 1)
+            nn.Linear(64, 1),
         )
-    def forward(self, obs_vector, act_vector):
-        return self.mlp(th.cat([obs_vector, act_vector], -1))
+    def forward(self, feature):
+        return self.mlp(feature)
     
 class PNet(nn.Module):
-    def __init__(self, obs_dim, act_dim):
+    def __init__(self, feature_dim, act_dim):
+        super(PNet, self).__init__()
         self.mlp = nn.Sequential(
-            nn.Linear(obs_dim, 128),
+            nn.Linear(feature_dim, 128),
             nn.ReLU(True),
             nn.Linear(128, 64),
             nn.ReLU(True),
-            nn.Linear(64, act_dim)
+            nn.Linear(64, act_dim),
         )
-    def forward(self, obs_vector):
-        return self.mlp(obs_vector)
+    def forward(self, feature):
+        return self.mlp(feature)
 
 
 
@@ -113,11 +127,16 @@ act_space = env.action_space
 buffer = Buffer(10000, obs_space, act_space)
 
 # 2.神经网络设置
-encoder = nn.Identity()
-q1, q2 = QNet(obs_space.shape[0], act_space.shape[0]), QNet(obs_space.shape[0], act_space.shape[0])
-mean, logstd = PNet(obs_space.shape[0], act_space.shape[0]), PNet(obs_space.shape[0], act_space.shape[0])
-actor = SAC_Actor(encoder, mean, logstd)
-critic = SAC_Critic(encoder, q1, q2)
+actor = SAC_Actor(
+        EncoderNet(obs_space.shape, 256),
+        PNet(256, act_space.shape[0]),
+        PNet(256, act_space.shape[0]),
+    )
+critic = SAC_Critic(
+        EncoderNet(obs_space.shape, 256),
+        QNet(256, act_space.shape[0]),
+        QNet(256, act_space.shape[0]),
+    )
 
 # 3.算法设置
 agent = SAC_Agent(env)
