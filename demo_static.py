@@ -52,11 +52,11 @@ act_dim = env.action_space.shape[0]
 '''策略实例化'''
 from sac_agent import SAC_Actor
 policy = SAC_Actor(
-        PiEncoderNet(obs_shape, 256),
-        PiNet(256, act_dim),
-        PiNet(256, act_dim),
+        PiEncoderNet(obs_shape, 128),
+        PiNet(128, act_dim),
+        PiNet(128, act_dim),
     )
-policy.load_state_dict(th.load("demo_static.pkl", map_location="cpu"))
+policy.load_state_dict(th.load("policy_static.pkl", map_location="cpu"))
 
 
     
