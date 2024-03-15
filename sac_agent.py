@@ -143,6 +143,7 @@ class BaseBuffer:
         use_rnn = True : (*state_shape, ) -> (1, 1, *state_shape)
         """
         raise NotImplementedError
+        # TODO 若想支持混合动作空间, 需定义 action_to_numpy 方法
     
     # 5.IO接口
     def save(self, data_dir: PathLike, buffer_id: Union[int, str] = None):
@@ -238,7 +239,7 @@ class SAC_Actor(nn.Module):
             logp_pi_a = None
         return a, logp_pi_a # (batch, act_dim) and (batch, 1)
 
-    def act(self, obs, deterministic=False) -> np.ndarray[any, float]:
+    def act(self, obs, deterministic=False) -> np.ndarray[any, float]: # NOTE 不支持混合动作空间
         self.eval()
         with th.no_grad():
             a, _ = self.forward(obs, deterministic, False)
@@ -400,20 +401,20 @@ class SAC_Agent:
         """存储策略模型"""
         assert self.__set_nn, "未设置神经网络!"
         # 输入输出设置
-        obs_tensor = self.state_to_tensor(self.obs_space.sample()) # NOTE 混合输入???
-        dummy_input = (obs_tensor, deterministic_model, output_logprob)
-        output_names = ['action']
-        dynamic_axes = {'observation': {0: 'batch_size'}, 'action': {0: 'batch_size'}}
+        obs_tensor = self.state_to_tensor(self.obs_space.sample())
+        dummy_input = (obs_tensor, deterministic_model, output_logprob) # BUG use_rnn需添加 h 或 h+C
+        input_names, output_names = self._get_onnx_input_output_names(False) # BUG use_rnn未实现
+        dynamic_axes, axes_name = self._get_onnx_dynamic_axes(input_names, output_names, False) # BUG use_rnn未实现
         if output_logprob:
             output_names += ['logprob']
-            dynamic_axes['logprob'] = {0: 'batch_size'}
+            dynamic_axes['logprob'] = axes_name
         # 模型部署
         self.actor.eval().to(map_device)
         th.onnx.export(
             self.actor, 
             dummy_input,
             Path(file).with_suffix('.onnx'), 
-            input_names = ['observation'],
+            input_names = input_names,
             output_names = output_names,
             dynamic_axes = dynamic_axes,
             export_params = True,
@@ -691,3 +692,25 @@ class SAC_Agent:
         loss.backward()
         optimizer.step()
 
+    def _get_onnx_input_output_names(self, use_rnn=False):
+        """获取部署模型输入输出名"""
+        if isinstance(self.obs_space, GymDict):
+            input_names = [str(k) for k in self.obs_space]
+        elif isinstance(self.obs_space, GymTuple):
+            input_names = ['observation'+str(i) for i in range(len(self.obs_space))]
+        else:
+            input_names = ['observation']
+        if use_rnn:
+            input_names += ['hidden_state'] # BUG 不支持 LSTM, 需添加 cell_state
+        output_names = ['action'] # NOTE 暂不支持混合动作空间
+        return input_names, output_names
+
+    def _get_onnx_dynamic_axes(self, onnx_input_names, onnx_output_names, use_rnn=False):
+        """获取部署模型动态轴"""
+        if use_rnn:
+            axes_name = {0: 'batch_size', 1: 'seq_len'}
+        else:
+            axes_name = {0: 'batch_size'}
+        keys = onnx_input_names + onnx_output_names
+        axes_dict = {k: axes_name for k in keys}
+        return axes_dict, axes_name
