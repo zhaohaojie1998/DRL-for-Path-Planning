@@ -69,7 +69,7 @@ policy = SAC_Actor(
         PNet(256, act_dim),
         PNet(256, act_dim),
     )
-policy.load_state_dict(th.load("demo_dynamic.pkl", map_location="cpu"))
+policy.load_state_dict(th.load("demo_dynamic.pth", map_location="cpu"))
 
 
     
