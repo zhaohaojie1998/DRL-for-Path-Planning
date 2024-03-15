@@ -179,8 +179,8 @@ for episode in range(MAX_EPISODE):
             obs = deepcopy(next_obs)
     #end for
 #end for
-agent.save_policy("policy_static.pth") # 存储策略权重
-# agent.save_onnx("policy_static.onnx") # 存储策略模型
+agent.save_policy("policy_static.onnx") # 存储策略模型
+# agent.save_policy_dict("policy_static.pth") # 存储策略权重
 # agent.save('./checkpoint') # 存储算法
 # agent.load('./checkpoint') # 加载算法
 
