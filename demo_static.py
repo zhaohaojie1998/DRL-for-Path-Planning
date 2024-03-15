@@ -20,26 +20,24 @@ from copy import deepcopy
 
 
 '''策略定义'''
-class EncoderNet(nn.Module):
+class PiEncoderNet(nn.Module):
     def __init__(self, obs_shape, feature_dim):
-        super(EncoderNet, self).__init__()
+        super(PiEncoderNet, self).__init__()
         obs_dim = np.prod(obs_shape)
         self.mlp = nn.Sequential(
-            nn.Linear(obs_dim, feature_dim),
-            nn.ReLU(True)
-        )
+            nn.Linear(obs_dim, 128),
+            nn.ReLU(True),
+            nn.Linear(128, feature_dim),
+            nn.ReLU(True),
+            )
     def forward(self, obs):
         return self.mlp(obs)
-class PNet(nn.Module):
+    
+class PiNet(nn.Module):
     def __init__(self, feature_dim, act_dim):
-        super(PNet, self).__init__()
-        self.mlp = nn.Sequential(
-            nn.Linear(feature_dim, 128),
-            nn.ReLU(True),
-            nn.Linear(128, 64),
-            nn.ReLU(True),
-            nn.Linear(64, act_dim)
-        )
+        super(PiNet, self).__init__()
+        self.mlp = nn.Linear(feature_dim, act_dim)
+
     def forward(self, feature):
         return self.mlp(feature)
 
@@ -54,9 +52,9 @@ act_dim = env.action_space.shape[0]
 '''策略实例化'''
 from sac_agent import SAC_Actor
 policy = SAC_Actor(
-        EncoderNet(obs_shape, 256),
-        PNet(256, act_dim),
-        PNet(256, act_dim),
+        PiEncoderNet(obs_shape, 256),
+        PiNet(256, act_dim),
+        PiNet(256, act_dim),
     )
 policy.load_state_dict(th.load("demo_static.pkl", map_location="cpu"))
 
