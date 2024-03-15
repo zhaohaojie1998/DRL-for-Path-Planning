@@ -56,7 +56,7 @@ policy = SAC_Actor(
         PiNet(128, act_dim),
         PiNet(128, act_dim),
     )
-policy.load_state_dict(th.load("policy_static.pkl", map_location="cpu"))
+policy.load_state_dict(th.load("policy_static.pth", map_location="cpu"))
 
 
     
