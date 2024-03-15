@@ -12,34 +12,8 @@ import matplotlib.pyplot as plt
 plt.rcParams['font.sans-serif'] = ['Microsoft YaHei']
 plt.close('all')
 
-import torch as th
 import numpy as np
-import torch.nn as nn
 from copy import deepcopy
-
-
-
-'''策略定义'''
-class PiEncoderNet(nn.Module):
-    def __init__(self, obs_shape, feature_dim):
-        super(PiEncoderNet, self).__init__()
-        obs_dim = np.prod(obs_shape)
-        self.mlp = nn.Sequential(
-            nn.Linear(obs_dim, 128),
-            nn.ReLU(True),
-            nn.Linear(128, feature_dim),
-            nn.ReLU(True),
-            )
-    def forward(self, obs):
-        return self.mlp(obs)
-    
-class PiNet(nn.Module):
-    def __init__(self, feature_dim, act_dim):
-        super(PiNet, self).__init__()
-        self.mlp = nn.Linear(feature_dim, act_dim)
-
-    def forward(self, feature):
-        return self.mlp(feature)
 
 
 '''环境实例化'''
@@ -49,17 +23,11 @@ obs_shape = env.observation_space.shape
 act_dim = env.action_space.shape[0]
 
 
-'''策略实例化'''
-from sac_agent import SAC_Actor
-policy = SAC_Actor(
-        PiEncoderNet(obs_shape, 128),
-        PiNet(128, act_dim),
-        PiNet(128, act_dim),
-    )
-policy.load_state_dict(th.load("policy_static.pth", map_location="cpu"))
+'''策略加载'''
+import onnxruntime as ort
+policy = ort.InferenceSession("policy_static.onnx")
 
 
-    
 '''仿真LOOP'''
 MAX_EPISODE = 20        # 总的训练/评估次数
 render = True           # 是否可视化训练/评估过程(仿真速度会降几百倍)
@@ -73,8 +41,9 @@ for episode in range(MAX_EPISODE):
         if render:
             env.render()
         # 决策
-        obs_tensor = th.FloatTensor(obs).unsqueeze(0).to("cpu")
-        act = policy.act(obs_tensor)
+        obs = obs.reshape(1, *obs.shape)                      # (*shape, ) -> (1, *shape, )
+        act = policy.run(['action'], {'observation': obs})[0] # return [action, ...]
+        act = act.flatten()                                   # (1, dim, ) -> (dim, )
         # 仿真
         next_obs, _, _, info = env.step(act)
         # 回合结束
