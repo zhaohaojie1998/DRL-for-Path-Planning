@@ -129,9 +129,9 @@ buffer = Buffer(10000, obs_space, act_space)
 
 # 2.神经网络设置
 actor = SAC_Actor(
-        PiEncoderNet(obs_space.shape, 256),
-        PiNet(256, act_space.shape[0]),
-        PiNet(256, act_space.shape[0]),
+        PiEncoderNet(obs_space.shape, 128),
+        PiNet(128, act_space.shape[0]),
+        PiNet(128, act_space.shape[0]),
     )
 critic = SAC_Critic(
         QEncoderNet(),
@@ -179,7 +179,7 @@ for episode in range(MAX_EPISODE):
             obs = deepcopy(next_obs)
     #end for
 #end for
-agent.save("demo_static.pkl")
+agent.save("policy_static.pkl")
 
 
 
