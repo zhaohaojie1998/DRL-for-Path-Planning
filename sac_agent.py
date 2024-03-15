@@ -16,6 +16,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 from torch.distributions import Normal
 
+from pathlib import Path
 from copy import deepcopy
 
 __all__ = [
@@ -32,7 +33,7 @@ __all__ = [
 
 #----------------------------- ↓↓↓↓↓ Experience Replay Buffer ↓↓↓↓↓ ------------------------------#
 class BaseBuffer:
-    """ReplayBuffer只因类, 需根据具体任务完善相应功能"""
+    """ReplayBuffer坤类, 需根据具体任务完善相应功能"""
 
     obs_space: ObsSpace
     act_space: ActSpace
@@ -56,7 +57,12 @@ class BaseBuffer:
     
     # 1.存储
     @abstractmethod
-    def push(self, transition: tuple[Obs, Act, float, Obs, bool], terminal: bool = None, **kwargs):
+    def push(
+        self, 
+        transition: tuple[Obs, Act, float, Obs, bool], 
+        terminal: bool = None, 
+        **kwargs
+    ):
         """存入一条样本\n
             transition = (state, action, reward, next_state, done)
             terminal 用于控制 DRQN 的 EPISODE REPLAY
@@ -67,7 +73,12 @@ class BaseBuffer:
         """当前buffer容量"""
         return 0
     
-    def extend(self, transition_list: list[tuple[Obs, Act, float, Obs, bool]], terminal_list: list[bool] = None, **kwargs):
+    def extend(
+        self, 
+        transition_list: list[tuple[Obs, Act, float, Obs, bool]], 
+        terminal_list: list[bool] = None, 
+        **kwargs
+    ):
         """存入一批样本\n
             extend(List[(state, action, reward, next_state, done)], List[terminal])
         """
@@ -127,7 +138,7 @@ class BaseBuffer:
     # 4.一个Obs转换成样本
     @abstractmethod
     def state_to_tensor(self, state: Obs, use_rnn=False) -> ObsBatch:
-        """select_action调用, 将单个state转换成张量
+        """算法的select_action和save_policy接口调用, 用于将1个state转换成batch_size=1的张量
         use_rnn = False : (*state_shape, ) -> (1, *state_shape)
         use_rnn = True : (*state_shape, ) -> (1, 1, *state_shape)
         """
@@ -169,7 +180,7 @@ class BaseBuffer:
 
 #----------------------------- ↓↓↓↓↓ Soft Actor-Critic ↓↓↓↓↓ ------------------------------#
 
-# 1.Q网络
+# Q网络
 class SAC_Critic(nn.Module):
     def __init__(self, encoder: nn.Module, q1_layer: nn.Module, q2_layer: nn.Module):
         """设置SAC的Critic
@@ -191,7 +202,7 @@ class SAC_Critic(nn.Module):
 
 
 
-# 2.PI网络
+# PI网络
 class SAC_Actor(nn.Module):
     def __init__(self, encoder: nn.Module, mu_layer: nn.Module, log_std_layer: nn.Module, log_std_max=2.0, log_std_min=-20.0):
         """设置SAC的Actor
@@ -236,14 +247,13 @@ class SAC_Actor(nn.Module):
     
 
 
-# 3.SAC-1812 Agent
+# SAC-Auto算法
 class SAC_Agent:
     """Soft Actor-Critic (arXiv: 1812) 算法"""
    
     def __init__(
         self, 
         env: GymEnv,                # gym环境 或 cfg参数
-
         *,
         gamma: float = 0.99,        # 折扣因子 γ
         alpha: float = 0.2,         # 温度系数 α
@@ -263,7 +273,27 @@ class SAC_Agent:
         alpha_optim_cls = th.optim.Adam, # α 优化器类型
 
         device: DeviceLike = th.device("cuda" if th.cuda.is_available() else "cpu"), # 计算设备
-    ):  
+    ): 
+        """
+        Args:
+            env (GymEnv): Gym环境实例, 或包含observation_space和action_space的数据类.
+        KwArgs:
+            gamma (float): 累积奖励折扣率. 默认0.99.
+            alpha (float): 初始温度系数. 默认0.2.
+            batch_size (int): 样本容量. 默认128.
+            update_after (int): 训练开始步数. 默认1000.
+            lr_decay_period (int): 学习率衰减到原来的0.1倍的周期. 默认None不衰减.
+            lr_critic (float): Q函数学习率. 默认0.001.
+            lr_actor (float): Pi函数学习率. 默认0.001.
+            tau (float): 目标Q函数软更新系数. 默认0.005.
+            q_loss_cls (TorchLossClass): Q函数的损失函数. 默认MSELoss.
+            grad_clip (float): Q函数梯度裁剪范围. 默认None不裁剪.
+            adaptive_alpha (bool): 是否自适应温度系数. 默认True.
+            target_entropy (float): 目标策略熵. 默认-dim(A).
+            lr_alpha (float): 温度系数学习率. 默认0.001.
+            alpha_optim_cls (TorchOptimizerClass): 温度系数优化器. 默认Adam.
+            device (DeviceLike): 训练设备. 默认cuda0.
+        """
         assert isinstance(env.action_space, GymBox), "SAC-Auto算法的动作空间只能是Box"
         self.device = device
         # 环境参数
@@ -306,6 +336,7 @@ class SAC_Agent:
     
     # 0.Torch接口
     def to(self, device: DeviceLike):
+        """算法device设置"""
         assert self.__set_nn, "未设置神经网络!"
         assert self.__set_buffer, "未设置ReplayBuffer!"
         self.device = device
@@ -319,16 +350,88 @@ class SAC_Agent:
         return self
 
     def cuda(self, cuda_id=None):
+        """算法device转换到cuda上"""
         device = 'cpu' if not th.cuda.is_available() else 'cuda' if cuda_id is None else 'cuda:' + str(cuda_id)
         self.to(device)
         return self
 
     def cpu(self):
+        """算法device转换到cpu上"""
         self.to('cpu')
         return self
+    
+    # 1.IO接口
+    def save(self, data_dir: PathLike):
+        """存储算法"""
+        assert self.__set_nn, "未设置神经网络!"
+        assert self.__set_buffer, "未设置ReplayBuffer!"
+        data_dir = Path(data_dir)
+        th.save(self.actor.state_dict(), data_dir/'state_dict'/'actor.pth')
+        th.save(self.q_critic.state_dict(), data_dir/'state_dict'/'critic.pth')
+        th.save(self.target_q_critic.state_dict(), data_dir/'state_dict'/'target_critic.pth')
+        self.buffer.save(data_dir/'buffer')
+        #存储 温度系数/优化器/算法参数等, 代码略
+        
+    def load(self, data_dir: PathLike):
+        """加载算法"""
+        assert self.__set_nn, "未设置神经网络!"
+        assert self.__set_buffer, "未设置ReplayBuffer!"
+        data_dir = Path(data_dir)
+        self.actor.load_state_dict(th.load(data_dir/'state_dict'/'actor.pth', map_location=self.device))
+        self.q_critic.load_state_dict(th.load(data_dir/'state_dict'/'critic.pth', map_location=self.device))
+        self.target_q_critic.load_state_dict(th.load(data_dir/'state_dict'/'target_critic.pth', map_location=self.device))
+        self.buffer.load(data_dir/'buffer')
+        #加载 温度系数/优化器/算法参数等, 代码略
 
-    # 1.神经网络设置接口
-    def set_nn(self, actor: SAC_Actor, critic: SAC_Critic, *, actor_optim_cls=th.optim.Adam, critic_optim_cls=th.optim.Adam, copy=True):
+    def save_policy_dict(self, file: PathLike, map_device: DeviceLike = 'cpu'):
+        """存储策略权重"""
+        assert self.__set_nn, "未设置神经网络!"
+        self.actor.eval().to(map_device)
+        th.save(self.actor.state_dict(), Path(file).with_suffix('.pth'))
+        self.actor.train().to(self.device)
+
+    def save_policy(
+        self, 
+        file: PathLike, 
+        map_device: DeviceLike = 'cpu', 
+        deterministic_model: bool = False, 
+        output_logprob: bool = False
+    ):
+        """存储策略模型"""
+        assert self.__set_nn, "未设置神经网络!"
+        # 输入输出设置
+        obs_tensor = self.state_to_tensor(self.obs_space.sample()) # NOTE 混合输入???
+        dummy_input = (obs_tensor, deterministic_model, output_logprob)
+        output_names = ['action']
+        dynamic_axes = {'observation': {0: 'batch_size'}, 'action': {0: 'batch_size'}}
+        if output_logprob:
+            output_names += ['logprob']
+            dynamic_axes['logprob'] = {0: 'batch_size'}
+        # 模型部署
+        self.actor.eval().to(map_device)
+        th.onnx.export(
+            self.actor, 
+            dummy_input,
+            Path(file).with_suffix('.onnx'), 
+            input_names = ['observation'],
+            output_names = output_names,
+            dynamic_axes = dynamic_axes,
+            export_params = True,
+            verbose = False,
+            opset_version = 11, # 11版之后才支持Normal运算
+        )
+        self.actor.train().to(self.device)
+
+    # 2.神经网络设置接口
+    def set_nn(
+        self, 
+        actor: SAC_Actor, 
+        critic: SAC_Critic, 
+        *, 
+        actor_optim_cls = th.optim.Adam, 
+        critic_optim_cls = th.optim.Adam, 
+        copy: bool = True
+    ):
         """修改神经网络模型, 要求按Actor/Q_Critic格式自定义网络"""
         self.__set_nn = True
         self.actor = deepcopy(actor) if copy else actor
@@ -339,90 +442,68 @@ class SAC_Agent:
         self.actor_optimizer = actor_optim_cls(self.actor.parameters(), self.lr_actor)
         self.q_critic_optimizer = critic_optim_cls(self.q_critic.parameters(), self.lr_critic)
 
-    def save(self, file):
-        """存储算法"""
-        assert self.__set_nn, "未设置神经网络!"
-        th.save(self.actor.state_dict(), file)
-        #self.buffer.save('./buffer')
-        # 存储 Critic/优化器/算法参数等, 代码略
-        
-    def load(self, file):
-        """加载算法"""
-        assert self.__set_nn, "未设置神经网络!"
-        self.actor.load_state_dict(th.load(file, map_location=self.device))
-        #self.buffer.load('./buffer')
-
-    # 2.经验回放设置接口
+    # 3.经验回放设置接口
     def set_buffer(self, buffer: BaseBuffer):
         self.__set_buffer = True
         self.buffer = buffer
-        # multi buffer example
-        # self.buffer = [buffer1, buffer2, ...]
     
-    def store_memory(self, transition: tuple[Obs, Act, float, Obs, bool], terminal: bool = None, **kwargs):
+    def store_memory(
+        self, 
+        transition: tuple[Obs, Act, float, Obs, bool], 
+        terminal: bool = None, 
+        **kwargs
+    ):
         """经验存储
-
         Args:
             transition (tuple): (s, a, r, s_, done)元组, 顺序不能变.
             terminal (bool): DRQN/R2D2等RNN算法控制参数, 控制Buffer时间维度指针跳转.
             **kwargs: Buffer.push的其它控制参数.
-            注意: done表示成功/失败/死亡等, 此时没有下一个状态; terminal表示回合结束(新gym的truncated参数), 可能是超时/越界等导致的, 此时有下一个状态.
+            注意: done表示成功/失败/死亡等, 此时没有下一个状态s_; terminal表示回合结束(新gym的truncated参数), 可能是超时/越界等导致的, 此时有下一个状态s_.
         """
         assert self.__set_buffer, "未设置ReplayBuffer!"
         self.buffer.push(transition, terminal, **kwargs)
-        # multi buffer example
-        # [buffer.push(...) for buffer in self.buffer]
  
     def replay_memory(self, batch_size: int, **kwargs):
         """经验回放
-
         Args:
             batch_size (int): 样本容量.
             **kwargs: Buffer.sample的控制参数, 如优先经验回放需要传入rate = learn_step/total_step 更新Buffer的alpha/beta参数.
-
         Returns:
             batch = {'s': ObsBatch, 'a': ActBatch, 'r': FloatTensor, 's_': ObsBatch, 'done': FloatTensor, ...}
             若为PER字典的key还要包含'IS_weight'.
             若为MARL, 字典的value为如 [ObsBatch1, ObsBatch2] 形式的list.
         """
         return self.buffer.sample(batch_size, **kwargs)
-        # multi buffer example
-        # bs = [buffer.sample(batch_size, **kwargs) for buffer in self.buffer]
-        # batch['s'] = [b['s'] for b in bs]
-        # ...
-        # return batch
-
+    
     @property
     def buffer_len(self) -> int:
         """当前存储的容量"""
         return len(self.buffer)
-        # multi buffer example
-        # return min([len(buffer) for buffer in self.buffer])
     
     @property
     def use_per(self) -> bool:
         """是否优先经验回放"""
         return self.buffer.is_per
         
-    # 3.决策模块接口
+    # 4.决策模块接口
     def state_to_tensor(self, state: Obs) -> ObsBatch:
         """状态升维并转换成Tensor"""
         return self.buffer.state_to_tensor(state, use_rnn=False) # (1, *state_shape) tensor GPU
     
     def select_action(self, state: Obs, *, deterministic=False, **kwargs) -> np.ndarray:
-        """选择动作"""
+        """选择动作 -> [-1, 1]"""
         assert self.__set_nn, "未设置神经网络!"
         state = self.state_to_tensor(state)
         return self.actor.act(state, deterministic) # (act_dim, ) ndarray
     
     def random_action(self) -> np.ndarray:
-        """随机动作 [-1, 1]"""
+        """随机动作 -> [-1, 1]"""
         action = self.act_space.sample()
         lb, ub = self.act_space.low, self.act_space.high
         action = 2 * (action - lb) / (ub - lb) - 1
         return np.clip(action, -1.0, 1.0) # (act_dim, ) ndarray
 
-    # 4.强化学习接口
+    # 5.强化学习接口
     def learn(self, **kwargs) -> dict[str, Union[float, None]]:
         """Soft Actor-Critic
         1.优化Critic
@@ -489,7 +570,7 @@ class SAC_Agent:
         return {'q_loss': q_loss.item(), 'actor_loss': a_loss.item(), 'alpha_loss': alpha_loss, 
                 'q': Q_curr.mean().item(), 'alpha': self.alpha}
     
-    # 5.SAC损失函数
+    # 6.SAC损失函数
     def _compute_qloss(self, batch) -> tuple[th.Tensor, th.Tensor]:
         """计算Q-Critic(连续)或Q-Net(离散)的损失, 返回Loss和当前Q值"""
         s, a, r, s_, done = batch["s"], batch["a"], batch["r"], batch["s_"], batch["done"]
@@ -521,7 +602,7 @@ class SAC_Agent:
         a_loss = (self.alpha*log_pi - Q).mean()
         return a_loss, log_pi
 
-    # 6.功能函数
+    # 7.功能函数
     @staticmethod
     def _soft_update(target_network: nn.Module, network: nn.Module, tau: float):
         """
