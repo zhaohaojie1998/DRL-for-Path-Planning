@@ -75,16 +75,8 @@ class Buffer(BaseBuffer):
         return th.FloatTensor(state).unsqueeze(0).to(self.device)
     
 # 2.定义神经网络（取决于观测数据结构）
-class EncoderNet(nn.Module):
-    def __init__(self, obs_shape, feature_dim):
-        super(EncoderNet, self).__init__()
-        obs_dim = np.prod(obs_shape)
-        self.mlp = nn.Sequential(
-            nn.Linear(obs_dim, feature_dim),
-            nn.ReLU(True),
-        )
-    def forward(self, obs):
-        return self.mlp(obs)
+# Q网络
+QEncoderNet = nn.Identity
 
 class QNet(nn.Module):
     def __init__(self, feature_dim, act_dim):
@@ -98,17 +90,26 @@ class QNet(nn.Module):
         )
     def forward(self, feature):
         return self.mlp(feature)
-    
-class PNet(nn.Module):
-    def __init__(self, feature_dim, act_dim):
-        super(PNet, self).__init__()
+
+# Pi网络
+class PiEncoderNet(nn.Module):
+    def __init__(self, obs_shape, feature_dim):
+        super(PiEncoderNet, self).__init__()
+        obs_dim = np.prod(obs_shape)
         self.mlp = nn.Sequential(
-            nn.Linear(feature_dim, 128),
+            nn.Linear(obs_dim, 128),
             nn.ReLU(True),
-            nn.Linear(128, 64),
+            nn.Linear(128, feature_dim),
             nn.ReLU(True),
-            nn.Linear(64, act_dim),
-        )
+            )
+    def forward(self, obs):
+        return self.mlp(obs)
+    
+class PiNet(nn.Module):
+    def __init__(self, feature_dim, act_dim):
+        super(PiNet, self).__init__()
+        self.mlp = nn.Linear(feature_dim, act_dim)
+
     def forward(self, feature):
         return self.mlp(feature)
 
@@ -128,14 +129,14 @@ buffer = Buffer(10000, obs_space, act_space)
 
 # 2.神经网络设置
 actor = SAC_Actor(
-        EncoderNet(obs_space.shape, 256),
-        PNet(256, act_space.shape[0]),
-        PNet(256, act_space.shape[0]),
+        PiEncoderNet(obs_space.shape, 256),
+        PiNet(256, act_space.shape[0]),
+        PiNet(256, act_space.shape[0]),
     )
 critic = SAC_Critic(
-        EncoderNet(obs_space.shape, 256),
-        QNet(256, act_space.shape[0]),
-        QNet(256, act_space.shape[0]),
+        QEncoderNet(),
+        QNet(obs_space.shape[0], act_space.shape[0]),
+        QNet(obs_space.shape[0], act_space.shape[0]),
     )
 
 # 3.算法设置
