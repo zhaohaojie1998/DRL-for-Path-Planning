@@ -244,9 +244,9 @@ class DynamicPathPlanning(gym.Env):
     # 雷达扫描设置
     SCAN_RANGE = 5   # 扫描距离
     SCAN_ANGLE = 128 # 扫描范围 deg
-    SCAN_NUM = 64    # 扫描点个数
+    SCAN_NUM = 128   # 扫描点个数
 
-    def __init__(self, max_episode_steps=200, safe_radius=0.5, dt=0.5, use_old_gym=True):
+    def __init__(self, max_episode_steps=200, dt=0.5, use_old_gym=True):
         """最大回合步数, 安全距离, 积分步长, 是否采用老版接口
         """
         # 仿真
@@ -254,7 +254,7 @@ class DynamicPathPlanning(gym.Env):
         self.max_episode_steps = max_episode_steps
         self.map = self.MAP
         self.obstacles = self.map.obstacles
-        self.obstacles_buf = [o.buffer(safe_radius) for o in self.obstacles]
+        #self.obstacles_buf = [o.buffer(0.5) for o in self.obstacles]
         self.lidar = LidarModel(self.SCAN_RANGE, self.SCAN_ANGLE, self.SCAN_NUM)
         self.lidar.add_obstacles(self.obstacles)
 
