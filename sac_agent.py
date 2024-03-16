@@ -401,15 +401,17 @@ class SAC_Agent:
         """存储策略模型"""
         assert self.__set_nn, "未设置神经网络!"
         # 输入输出设置
+        device = deepcopy(self.device)
+        self.to(map_device)
         obs_tensor = self.state_to_tensor(self.obs_space.sample())
         dummy_input = (obs_tensor, deterministic_model, output_logprob) # BUG use_rnn需添加 h 或 h+C
         input_names, output_names = self._get_onnx_input_output_names(False) # BUG use_rnn未实现
-        dynamic_axes, axes_name = self._get_onnx_dynamic_axes(input_names, output_names, False) # BUG use_rnn未实现
+        dynamic_axes, axes_name = self._get_onnx_dynamic_axes(input_names, output_names)
         if output_logprob:
             output_names += ['logprob']
             dynamic_axes['logprob'] = axes_name
         # 模型部署
-        self.actor.eval().to(map_device)
+        self.actor.eval()
         th.onnx.export(
             self.actor, 
             dummy_input,
@@ -421,7 +423,8 @@ class SAC_Agent:
             verbose = False,
             opset_version = 11, # 11版之后才支持Normal运算
         )
-        self.actor.train().to(self.device)
+        self.actor.train()
+        self.to(device)
 
     # 2.神经网络设置接口
     def set_nn(
@@ -700,17 +703,24 @@ class SAC_Agent:
             input_names = ['observation'+str(i) for i in range(len(self.obs_space))]
         else:
             input_names = ['observation']
-        if use_rnn:
-            input_names += ['hidden_state'] # BUG 不支持 LSTM, 需添加 cell_state
         output_names = ['action'] # NOTE 暂不支持混合动作空间
+        if use_rnn:
+            input_names += ['old_hidden'] # BUG 不支持 LSTM, 需添加 cell_state
+            output_names += ['new_hidden']
         return input_names, output_names
 
-    def _get_onnx_dynamic_axes(self, onnx_input_names, onnx_output_names, use_rnn=False):
+    def _get_onnx_dynamic_axes(self, onnx_input_names, onnx_output_names):
         """获取部署模型动态轴"""
-        if use_rnn:
-            axes_name = {0: 'batch_size', 1: 'seq_len'}
+        # data shape: (batch_size, seq_len, *shape)
+        # hidden shape: (num_directions*num_layer, batch_size, hidden_size)
+        if 'old_hidden' in onnx_input_names:
+            data_axes_name = {0: 'batch_size', 1: 'seq_len'}
         else:
-            axes_name = {0: 'batch_size'}
-        keys = onnx_input_names + onnx_output_names
-        axes_dict = {k: axes_name for k in keys}
-        return axes_dict, axes_name
+            data_axes_name = {0: 'batch_size'}
+        axes_dict = {}
+        for k in onnx_input_names+onnx_output_names:
+            if k in {'old_hidden', 'new_hidden'}:
+                axes_dict[k] = {1: 'batch_size'}
+            else:
+                axes_dict[k] = data_axes_name
+        return axes_dict, data_axes_name
