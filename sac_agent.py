@@ -384,27 +384,20 @@ class SAC_Agent:
         self.buffer.load(data_dir/'buffer')
         #加载 温度系数/优化器/算法参数等, 代码略
 
-    def save_policy_dict(self, file: PathLike, map_device: DeviceLike = 'cpu'):
-        """存储策略权重"""
-        assert self.__set_nn, "未设置神经网络!"
-        self.actor.eval().to(map_device)
-        th.save(self.actor.state_dict(), Path(file).with_suffix('.pth'))
-        self.actor.train().to(self.device)
-
-    def save_policy(
+    def export(
         self, 
         file: PathLike, 
         map_device: DeviceLike = 'cpu', 
-        deterministic_model: bool = False, 
+        use_stochastic_policy: bool = True, 
         output_logprob: bool = False
     ):
-        """存储策略模型"""
+        """导出策略模型"""
         assert self.__set_nn, "未设置神经网络!"
         # 输入输出设置
         device = deepcopy(self.device)
         self.to(map_device)
         obs_tensor = self.state_to_tensor(self.obs_space.sample())
-        dummy_input = (obs_tensor, deterministic_model, output_logprob) # BUG use_rnn需添加 h 或 h+C
+        dummy_input = (obs_tensor, not use_stochastic_policy, output_logprob) # BUG use_rnn需添加 h 或 h+C
         input_names, output_names = self._get_onnx_input_output_names(False) # BUG use_rnn未实现
         dynamic_axes, axes_name = self._get_onnx_dynamic_axes(input_names, output_names)
         if output_logprob:
