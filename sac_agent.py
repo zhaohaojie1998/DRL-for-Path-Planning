@@ -138,7 +138,7 @@ class BaseBuffer:
     # 4.一个Obs转换成样本
     @abstractmethod
     def state_to_tensor(self, state: Obs, use_rnn=False) -> ObsBatch:
-        """算法的select_action和save_policy接口调用, 用于将1个state转换成batch_size=1的张量
+        """算法的select_action和export接口调用, 用于将1个state转换成batch_size=1的张量
         use_rnn = False : (*state_shape, ) -> (1, *state_shape)
         use_rnn = True : (*state_shape, ) -> (1, 1, *state_shape)
         """
