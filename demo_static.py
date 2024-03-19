@@ -15,8 +15,6 @@ plt.close('all')
 '''环境实例化'''
 from env import StaticPathPlanning, NormalizedActionsWrapper
 env = NormalizedActionsWrapper(StaticPathPlanning())
-obs_shape = env.observation_space.shape
-act_dim = env.action_space.shape[0]
 
 
 '''策略加载'''
