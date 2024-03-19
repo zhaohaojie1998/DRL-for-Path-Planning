@@ -100,7 +100,7 @@ class PiEncoderNet(nn.Module):
             nn.ReLU(True),
             nn.Linear(128, feature_dim),
             nn.ReLU(True),
-            )
+        )
     def forward(self, obs):
         return self.mlp(obs)
     
