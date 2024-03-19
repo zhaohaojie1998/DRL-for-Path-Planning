@@ -195,8 +195,8 @@ class SAC_Critic(nn.Module):
         self.q2_layer = deepcopy(q2_layer)
 
     def forward(self, obs, act):
-        obs = self.encoder_layer(obs) # (batch, feature_dim)
-        x = th.cat([obs, act], -1)
+        feature = self.encoder_layer(obs) # (batch, feature_dim)
+        x = th.cat([feature, act], -1)
         Q1 = self.q1_layer(x)
         Q2 = self.q2_layer(x)
         return Q1, Q2
@@ -219,9 +219,9 @@ class SAC_Actor(nn.Module):
         self.LOG_STD_MIN = log_std_min
 
     def forward(self, obs, deterministic=False, with_logprob=True):
-        x = self.encoder_layer(obs) # (batch, feature_dim)
-        mu = self.mu_layer(x)
-        log_std = self.log_std_layer(x)
+        feature = self.encoder_layer(obs) # (batch, feature_dim)
+        mu = self.mu_layer(feature)
+        log_std = self.log_std_layer(feature)
         log_std = th.clamp(log_std, self.LOG_STD_MIN, self.LOG_STD_MAX)
         std = th.exp(log_std)
         # 策略分布
