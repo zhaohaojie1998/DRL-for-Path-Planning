@@ -184,10 +184,9 @@ class BaseBuffer:
 # Q网络
 class SAC_Critic(nn.Module):
     def __init__(self, encoder: nn.Module, q1_layer: nn.Module, q2_layer: nn.Module):
-        """设置SAC的Critic
-
-        要求encoder输入为obs, 输出为 (batch, dim) 的特征 x.
-        要求q1_layer和q2_layer输入为 (batch, dim + act_dim) 的拼接向量 cat[x, a], 输出为 (batch, 1) 的 Q.
+        """设置SAC的Critic\n
+        要求encoder输入为obs, 输出为 (batch, dim) 的特征 x.\n
+        要求q1_layer和q2_layer输入为 (batch, dim + act_dim) 的拼接向量 cat[x, a], 输出为 (batch, 1) 的 Q.\n
         """
         super().__init__()
         self.encoder_layer = deepcopy(encoder)
@@ -206,10 +205,9 @@ class SAC_Critic(nn.Module):
 # PI网络
 class SAC_Actor(nn.Module):
     def __init__(self, encoder: nn.Module, mu_layer: nn.Module, log_std_layer: nn.Module, log_std_max=2.0, log_std_min=-20.0):
-        """设置SAC的Actor
-
-        要求encoder输入为obs, 输出为 (batch, dim) 的特征 x.
-        要求log_std_layer和mu_layer输入为 x, 输出为 (batch, act_dim) 的对数标准差和均值.
+        """设置SAC的Actor\n
+        要求encoder输入为obs, 输出为 (batch, dim) 的特征 x.\n
+        要求log_std_layer和mu_layer输入为 x, 输出为 (batch, act_dim) 的对数标准差和均值.\n
         """
         super().__init__()
         self.encoder_layer = deepcopy(encoder)
@@ -391,7 +389,13 @@ class SAC_Agent:
         use_stochastic_policy: bool = True, 
         output_logprob: bool = False
     ):
-        """导出策略模型"""
+        """导出onnx策略模型 (可通过 https://netron.app 查看模型计算图)\n
+        Args:
+            file (PathLike): 模型文件名.
+            map_device (DeviceLike): 模型计算设备. 默认'cpu'.
+            use_stochastic_policy (bool): 是否使用随机策略模型. 默认True.
+            output_logprob (bool): 模型是否计算SAC的策略信息熵. 默认False.
+        """
         assert self.__set_nn, "未设置神经网络!"
         # 输入输出设置
         device = deepcopy(self.device)
@@ -419,6 +423,36 @@ class SAC_Agent:
         self.actor.train()
         self.to(device)
 
+    def _get_onnx_input_output_names(self, use_rnn=False):
+        """获取onnx的输入输出名"""
+        if isinstance(self.obs_space, GymDict):
+            input_names = [str(k) for k in self.obs_space]
+        elif isinstance(self.obs_space, GymTuple):
+            input_names = ['observation'+str(i) for i in range(len(self.obs_space))]
+        else:
+            input_names = ['observation']
+        output_names = ['action'] # NOTE 暂不支持混合动作空间
+        if use_rnn:
+            input_names += ['old_hidden'] # BUG 不支持 LSTM, 需添加 cell_state
+            output_names += ['new_hidden']
+        return input_names, output_names
+
+    def _get_onnx_dynamic_axes(self, onnx_input_names, onnx_output_names):
+        """获取onnx的动态轴"""
+        # data shape: (batch_size, seq_len, *shape)
+        # hidden shape: (num_directions*num_layer, batch_size, hidden_size)
+        if 'old_hidden' in onnx_input_names:
+            data_axes_name = {0: 'batch_size', 1: 'seq_len'}
+        else:
+            data_axes_name = {0: 'batch_size'}
+        axes_dict = {}
+        for k in onnx_input_names+onnx_output_names:
+            if k in {'old_hidden', 'new_hidden'}:
+                axes_dict[k] = {1: 'batch_size'}
+            else:
+                axes_dict[k] = data_axes_name
+        return axes_dict, data_axes_name
+
     # 2.神经网络设置接口
     def set_nn(
         self, 
@@ -429,7 +463,7 @@ class SAC_Agent:
         critic_optim_cls = th.optim.Adam, 
         copy: bool = True
     ):
-        """修改神经网络模型, 要求按Actor/Q_Critic格式自定义网络"""
+        """设置神经网络, 要求为SAC_Actor/SAC_Critic的实例对象, 或结构相同的鸭子类的实例对象"""
         self.__set_nn = True
         self.actor = deepcopy(actor) if copy else actor
         self.actor.train().to(self.device)
@@ -441,6 +475,7 @@ class SAC_Agent:
 
     # 3.经验回放设置接口
     def set_buffer(self, buffer: BaseBuffer):
+        """设置经验回放, 要求为BaseBuffer的派生类的实例对象, 或结构相同的鸭子类的实例对象"""
         self.__set_buffer = True
         self.buffer = buffer
     
@@ -450,7 +485,7 @@ class SAC_Agent:
         terminal: bool = None, 
         **kwargs
     ):
-        """经验存储
+        """经验存储\n
         Args:
             transition (tuple): (s, a, r, s_, done)元组, 顺序不能变.
             terminal (bool): DRQN/R2D2等RNN算法控制参数, 控制Buffer时间维度指针跳转.
@@ -461,14 +496,13 @@ class SAC_Agent:
         self.buffer.push(transition, terminal, **kwargs)
  
     def replay_memory(self, batch_size: int, **kwargs):
-        """经验回放
+        """经验回放\n
         Args:
             batch_size (int): 样本容量.
             **kwargs: Buffer.sample的控制参数, 如优先经验回放需要传入rate = learn_step/total_step 更新Buffer的alpha/beta参数.
         Returns:
-            batch = {'s': ObsBatch, 'a': ActBatch, 'r': FloatTensor, 's_': ObsBatch, 'done': FloatTensor, ...}
+            batch = {'s': ObsBatch, 'a': ActBatch, 'r': FloatTensor, 's_': ObsBatch, 'done': FloatTensor, ...}\n
             若为PER字典的key还要包含'IS_weight'.
-            若为MARL, 字典的value为如 [ObsBatch1, ObsBatch2] 形式的list.
         """
         return self.buffer.sample(batch_size, **kwargs)
     
@@ -502,22 +536,17 @@ class SAC_Agent:
 
     # 5.强化学习接口
     def learn(self, **kwargs) -> dict[str, Union[float, None]]:
-        """Soft Actor-Critic
+        """Soft Actor-Critic\n
         1.优化Critic
-        ------------
-            min J(Q) = LOSS[ Q(s, a) - Q* ]
-            Q* = r + (1-d) * γ * V(s_, a*)
-            V(s_, a*) = Qt(s_, a*) - α*log π(a*|s_)
-
+            min J(Q) = LOSS[ Q(s, a) - Q* ]\n
+            Q* = r + (1-d) * γ * V(s_, a*)\n
+            V(s_, a*) = Qt(s_, a*) - α*log π(a*|s_)\n
         2.优化Actor
-        ------------
-            min J(π) = -V(s, a^)
-            V(s, a^) = α*log π(a^|s) - Q(s, a^)
-
+            min J(π) = -V(s, a^)\n
+            V(s, a^) = α*log π(a^|s) - Q(s, a^)\n
         3.优化Alpha
-        ------------
-            min J(α) = -α * (log π(a^|s) + H0)
-            min J(α) = -logα * (log π(a^|s) + H0) -> 速度更快
+            min J(α) = -α * (log π(a^|s) + H0)\n
+            min J(α) = -logα * (log π(a^|s) + H0) -> 速度更快\n
         """
         assert self.__set_nn, "未设置神经网络!"
         if self.buffer_len < self.batch_size or self.buffer_len < self.update_after:    
@@ -688,32 +717,3 @@ class SAC_Agent:
         loss.backward()
         optimizer.step()
 
-    def _get_onnx_input_output_names(self, use_rnn=False):
-        """获取部署模型输入输出名"""
-        if isinstance(self.obs_space, GymDict):
-            input_names = [str(k) for k in self.obs_space]
-        elif isinstance(self.obs_space, GymTuple):
-            input_names = ['observation'+str(i) for i in range(len(self.obs_space))]
-        else:
-            input_names = ['observation']
-        output_names = ['action'] # NOTE 暂不支持混合动作空间
-        if use_rnn:
-            input_names += ['old_hidden'] # BUG 不支持 LSTM, 需添加 cell_state
-            output_names += ['new_hidden']
-        return input_names, output_names
-
-    def _get_onnx_dynamic_axes(self, onnx_input_names, onnx_output_names):
-        """获取部署模型动态轴"""
-        # data shape: (batch_size, seq_len, *shape)
-        # hidden shape: (num_directions*num_layer, batch_size, hidden_size)
-        if 'old_hidden' in onnx_input_names:
-            data_axes_name = {0: 'batch_size', 1: 'seq_len'}
-        else:
-            data_axes_name = {0: 'batch_size'}
-        axes_dict = {}
-        for k in onnx_input_names+onnx_output_names:
-            if k in {'old_hidden', 'new_hidden'}:
-                axes_dict[k] = {1: 'batch_size'}
-            else:
-                axes_dict[k] = data_axes_name
-        return axes_dict, data_axes_name
