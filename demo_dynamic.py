@@ -15,8 +15,6 @@ plt.close('all')
 '''环境实例化'''
 from env import DynamicPathPlanning
 env = DynamicPathPlanning() # 动作空间本身就是 -1,1
-obs_space = env.observation_space
-act_dim = env.action_space.shape[0]
 
 
 '''策略加载'''
