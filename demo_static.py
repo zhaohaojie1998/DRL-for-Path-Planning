@@ -6,14 +6,10 @@
  
  @auther: HJ https://github.com/zhaohaojie1998
 """
-
-from copy import deepcopy
+#
 import matplotlib.pyplot as plt
 plt.rcParams['font.sans-serif'] = ['Microsoft YaHei']
 plt.close('all')
-
-import numpy as np
-from copy import deepcopy
 
 
 '''环境实例化'''
@@ -29,6 +25,8 @@ policy = ort.InferenceSession("policy_static.onnx")
 
 
 '''仿真LOOP'''
+from copy import deepcopy
+
 MAX_EPISODE = 20        # 总的训练/评估次数
 render = True           # 是否可视化训练/评估过程(仿真速度会降几百倍)
 
