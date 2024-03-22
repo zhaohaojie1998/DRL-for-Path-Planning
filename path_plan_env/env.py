@@ -174,6 +174,7 @@ class DynamicPathPlanning(gym.Env):
         self.__update_frame(frame)
 
     def __update_frame(self, frame):
+        """更新动画"""
         pass
 
     def close(self): 
