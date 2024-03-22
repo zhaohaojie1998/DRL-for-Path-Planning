@@ -192,6 +192,4 @@ MultiPoint, MultiLineString, MultiPolygon, GeometryCollection(混合类型)
 均有area属性(float), 返回图形面积, NOTE 闭合线段的面经为0
 均有length属性(float), 返回图形的周长
 
-
-
 """
