@@ -7,10 +7,6 @@
  @auther: HJ https://github.com/zhaohaojie1998
 """
 #
-import matplotlib.pyplot as plt
-plt.rcParams['font.sans-serif'] = ['Microsoft YaHei']
-plt.close('all')
-
 
 
 '''算法定义'''
@@ -23,8 +19,6 @@ from sac_agent import *
 class Buffer(BaseBuffer):
     def __init__(self, memory_size, obs_space, act_space):
         super(Buffer, self).__init__()
-        # assert isinstance(obs_space, gym.spaces.Box), "只能存取Box数据"
-        # assert isinstance(act_space, gym.spaces.Box), "只能存取Box数据"
         # 数据类型表示
         self.device = 'cuda'
         self.obs_space = obs_space
@@ -36,7 +30,7 @@ class Buffer(BaseBuffer):
         self._current_size = 0               # 当前容量
         # buffer容器
         obs_shape = obs_space.shape or (1, )
-        act_shape = obs_space.shape or (1, )
+        act_shape = act_space.shape or (1, ) # NOTE DiscreteSpace的shape为(), 设置collections应为(1, )
         self._data = {}
         self._data["s"] = np.empty((memory_size, *obs_shape), dtype=obs_space.dtype) # (size, *obs_shape, )连续 (size, 1)离散
         self._data["s_"] = deepcopy(self._data["s"])                                 # (size, *obs_shape, )连续 (size, 1)离散
@@ -59,6 +53,7 @@ class Buffer(BaseBuffer):
         self._data["r"][self._ptr] = transition[2]
         self._data["s_"][self._ptr] = transition[3]
         self._data["done"][self._ptr] = transition[4]
+        # update
         self._ptr = (self._ptr + 1) % self._memory_size                     # 更新指针
         self._current_size = min(self._current_size + 1, self._memory_size) # 更新容量
 
@@ -146,7 +141,7 @@ agent.cuda()
 
 
 '''训练LOOP''' 
-MAX_EPISODE = 2000        # 总的训练/评估次数
+MAX_EPISODE = 2000
 for episode in range(MAX_EPISODE):
     ## 重置回合奖励
     ep_reward = 0
@@ -155,7 +150,7 @@ for episode in range(MAX_EPISODE):
     ## 进行一回合仿真
     for steps in range(env.max_episode_steps):
         # 决策
-        act = agent.select_action(obs)  # 随机策略
+        act = agent.select_action(obs)
         # 仿真
         next_obs, reward, done, info = env.step(act)
         ep_reward += reward
