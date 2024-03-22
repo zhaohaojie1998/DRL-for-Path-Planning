@@ -103,16 +103,23 @@ class EncoderNet(nn.Module):
             nn.Flatten(),
         )
         cnn_out_dim = self._get_cnn_out_dim(self.cnn, (c, cnn_dim))
-        self.cnn_linear = nn.Linear(cnn_out_dim, feature_dim)
-        self.cnn_act = nn.ReLU(True)
+        self.cnn_mlp = nn.Sequential(
+            nn.Linear(cnn_out_dim, feature_dim),
+            nn.ReLU(True),
+        )
         # 状态向量编码
         _, rnn_dim = obs_space['seq_vector'].shape
         rnn_hidden_dim = 256
         rnn_num_layers = 1
-        self.rnn_linear1 = nn.Linear(rnn_dim, rnn_hidden_dim)
+        self.rnn_mlp1 = nn.Sequential(
+            nn.Linear(rnn_dim, rnn_hidden_dim),
+            nn.ReLU(True),
+        )
         self.rnn = nn.GRU(rnn_hidden_dim, rnn_hidden_dim, rnn_num_layers, batch_first=True)
-        self.rnn_linear2 = nn.Linear(rnn_hidden_dim, feature_dim)
-        self.rnn_act = nn.ReLU(True)
+        self.rnn_mlp2 = nn.Sequential(
+            nn.Linear(rnn_hidden_dim, feature_dim),
+            nn.ReLU(True),
+        )
         # 特征融合网络
         self.fusion = nn.Sequential(
             nn.Linear(2*feature_dim, feature_dim),
@@ -120,9 +127,9 @@ class EncoderNet(nn.Module):
         )
 
     def forward(self, obs):
-        f1 = self.cnn_act(self.cnn_linear(self.cnn(obs['seq_points']))) # batch, dim
-        f2_n, _ = self.rnn(self.rnn_act(self.rnn_linear1(obs['seq_vector'])), None) # batch, seq, dim
-        f2 = self.rnn_act(self.rnn_linear2(f2_n[:, -1, :])) # batch, dim
+        f1 = self.cnn_mlp(self.cnn(obs['seq_points'])) # batch, dim
+        f2_n, _ = self.rnn(self.rnn_mlp1(obs['seq_vector']), None) # batch, seq, dim
+        f2 = self.rnn_mlp2(f2_n[:, -1, :]) # batch, dim
         return self.fusion(th.cat([f1, f2], dim=-1)) # batch, dim
     
     @staticmethod
