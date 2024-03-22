@@ -138,6 +138,8 @@ onnxruntime >= 1.15.1 （模型推理API）
 
 非SAC算法依赖项：
 
+tensorboard （训练日志记录）
+
 scipy >= 1.7.3 （自定义Env数值积分）
 
 shapely >= 2.0.1 （自定义Env障碍表示）
