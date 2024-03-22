@@ -82,8 +82,8 @@ class QNet(nn.Module):
             nn.ReLU(True),
             nn.Linear(64, 1),
         )
-    def forward(self, feature):
-        return self.mlp(feature)
+    def forward(self, feature_and_action):
+        return self.mlp(feature_and_action)
 
 # Pi网络
 class PiEncoderNet(nn.Module):
