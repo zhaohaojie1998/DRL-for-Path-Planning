@@ -1,6 +1,6 @@
 # PyTorch版SAC-Auto强化学习模块
 
-## 零.SAC算法:
+## 零.SAC-Auto算法:
 
 ###### 自定义程度高的SAC-Auto算法，支持部署策略模型、备份训练过程、多源观测融合、PER等功能
 
@@ -8,7 +8,7 @@ Soft Actor-Critic Algorithms and Applications （arXiv: 1812) # 不是1801版
 
 ### 0.SAC_Agent模块
 
-SAC-Auto算法
+SAC-Auto算法主模块
 
 ##### 0.初始化接口
 
@@ -44,22 +44,26 @@ agent.store_memory(transition, kwargs=...)       # 存储环境转移元组(s, a
 info_dict = agent.learn(kwargs=...)              # 进行一次SAC优化, 返回Loss/Q函数/...
 ```
 
-##### 4.其余接口 (在learn方法中调用, 非用户调用)
+##### 4.其余接口/属性 (非用户调用接口，可在派生SAC_Agent模块中覆写)
 
 ```python
-obs_tensor = agent.state_to_tensor(obs, kwargs) # 将Gym返回的1个obs转换成batch obs, 用于处理混合输入情况, 默认跟随buffer设置
-batch_dict = agent.replay_memory(batch_size, kwargs) # 经验回放, 用于实现花样经验回放, 默认跟随buffer设置
-agent.buffer_len # 查看当前经验个数, 默认跟随buffer设置
-agent.use_per # 查看是否使用PER, 默认跟随buffer设置
+obs_tensor = agent.state_to_tensor(obs, kwargs=...) # 将Gym返回的1个obs转换成batch_obs, 用于处理混合输入情况, 默认跟随buffer设置
+batch_dict = agent.replay_memory(batch_size, kwargs=...) # 经验回放, 用于实现花样经验回放, 默认跟随buffer设置
+agent.buffer_len # 算法属性, 查看当前经验个数, 默认跟随buffer设置
+agent.use_per # 算法属性, 查看是否使用PER, 默认跟随buffer设置
 ```
 
 ### 1.SAC_Actor模块和SAC_Critic模块
 
-实现自定义 观测数据Encoder + 策略函数 + Q函数 
+实现自定义 **观测Encoder** + **策略函数** + **Q函数**
 
-要求策略函数的输入为Encoder的输出，Q函数的输入为Encoder输出+动作
+##### 0.自定义神经网络要求
 
-##### 0.初始化接口
+- 要求**观测Encoder**输入为观测 *batch_obs* 张量，输出形状为(batch, feature_dim)的特征 *batch_feature* 张量。要求forward函数只接受一个位置参数obs，混合观测要求传入的obs为张量字典dict[any, Tensor] / 张量列表list[Tensor] / 张量元组tuple[Tensor, ...]。
+- 要求**策略函数**输入为特征 *batch_feature* 张量，输出形状为(batch, action_dim)的未经tanh激活的均值 *batch_mu* 张量和对数标准差 *batch_logstd* 张量。要求forward函数只接受一个位置参数feature，形状为(batch, feature_dim)。
+- 要求**Q函数**输入为特征 *batch_feature* 张量+动作 *batch_action* 张量，输出形状为(batch, 1)的Q值 *batch_q* 张量。要求forward函数只接受两个位置参数feature和action，形状为(batch, feature_dim)和(batch, action_dim)。
+
+##### 1.自定义神经网络示例
 
 ```python
 encoder_net = MyEncoder()                   # 自定义观测编码器
@@ -67,29 +71,36 @@ mu_net, logstd_net = MyPolicy(), MyPolicy() # 自定义策略函数
 q1_net, q2_net = MyQfun(), MyQfun()         # 自定义双Q函数
 actor = SAC_Actor(encoder_net, mu_net, logstd_net, kwargs=...) # 设置自定义actor网络
 critic = SAC_Critic(encoder_net, q1_net, q2_net)               # 设置自定义critic网络
+agent.set_nn(
+    actor, 
+    critic, 
+    actor_optim_cls = th.optim.Adam, 
+    critic_optim_cls = th.optim.Adam, 
+    copy = True
+) # 为算法设置神经网络
 ```
 
 ### 2.BaseBuffer模块
 
 实现自定义经验回放，可自定义存储不同数据类型的混合观测数据（进行一些多传感器数据融合的端到端控制问题求解），也可自定义实现PER等功能。
 
-要求在派生类中实现以下抽象方法（输入参数和返回数据的格式参考DocString)：
+要求在派生类中实现以下抽象方法（输入参数和返回数据的格式参考DocString)，可参考demo_train.py中派生类实现方法：
 
-| 必须实现的方法       | 功能                                                         |
-| -------------------- | ------------------------------------------------------------ |
-| reset                | 经验池重置（Off-Policy算法一般用不到），也可用于初始化经验池 |
-| push                 | 存入环境转移元组(s, a, r, s_, done)                          |
-| sample               | 经验回放产生Batch，返回包含关键字s,a,r,s_,done的字典，每个key对应的value为Tensor或混合形式，PER还要包含关键字IS_Weight |
-| state_to_tensor      | 将1个观测数据转换成Batch，返回Tensor或混合形式，主要用于处理混合观测 |
-| **非必须实现的方法** | **功能**                                                     |
-| save                 | 存储数据，用于保存训练进度，可省略                           |
-| load                 | 加载数据，用于保存训练进度，可省略                           |
-| update_priorities    | 用于更新PER的优先级，非PER可省略                             |
-| is_per               | 是否是PER回放，默认False                                     |
-| is_rnn               | 是否RNN按回合回放，默认False                                 |
-| nbytes               | 用于查看经验池占用内存，默认0                                |
+| **必须实现的方法**        | **功能**                                                     |
+| ------------------------- | ------------------------------------------------------------ |
+| reset                     | 重置经验池（Off-Policy算法一般用不到），也可用于初始化经验池（生成转移元组collections） |
+| push                      | 经验存储：存入环境转移元组*(s, a, r, s_, done)*，其中状态*s*和下一个状态*s_*（或观测*obs*）为array（或混合形式dict[any, array]、list[array]、tuple[array, ...]），动作*a*为array，奖励*r*为float，*s_*是否存在*done*为bool。 |
+| sample                    | 经验采样：要求返回包含关键字*'s','a','r','s_','done'*的*batch*字典，*batch*的每个key对应value为Tensor（或dict[any, Tensor]、list[Tensor]、tuple[Tensor, ...]）；PER的batch还要包含关键字*'IS_weight'*，对应的value为Tensor。 |
+| state_to_tensor           | 数据升维并转换：将Gym输出的1个*obs*转换成*batch obs*，要求返回Tensor（或混合形式dict[any, Tensor]、list[Tensor]、tuple[Tensor, ...]）。 |
+| **非必须实现的方法/属性** | **功能**                                                     |
+| save                      | 存储buffer数据，用于保存训练进度，可省略                     |
+| load                      | 加载buffer数据，用于加载训练进度，可省略                     |
+| update_priorities         | 用于更新PER的优先级，非PER可省略                             |
+| is_per（属性）            | 是否是PER回放，默认False                                     |
+| is_rnn（属性）            | 是否RNN按episode回放，默认False                              |
+| nbytes（属性）            | 用于查看经验池占用内存，默认0                                |
 
-## 一.SAC应用示例:
+## 一.SAC算法应用示例:
 
 ### 0.静态路径规划（几何）
 
@@ -97,7 +108,7 @@ critic = SAC_Critic(encoder_net, q1_net, q2_net)               # 设置自定义
 
 ![](图片/Result.png)
 
-### 1**.动态路径规划（运动学）**
+### 1.动态路径规划（运动学）
 
 雷达避障模型
 
@@ -113,21 +124,25 @@ critic = SAC_Critic(encoder_net, q1_net, q2_net)               # 设置自定义
 
 python >= 3.9
 
+SAC算法依赖项：
+
+gym >= 0.21.0 （数据结构API）
+
+numpy >= 1.22.3 （数组运算API）
+
 pytorch >= 1.10.2 （深度学习API）
 
-onnx >= 1.13.1 （模型部署）
+onnx >= 1.13.1 （模型部署API）
 
-onnxruntime >= 1.15.1 （模型推理）
+onnxruntime >= 1.15.1 （模型推理API）
 
-gym >= 0.21.0 （环境API）
+非SAC算法依赖项：
 
-shapely >= 2.0.1 （障碍建模）
+scipy >= 1.7.3 （自定义Env数值积分）
 
-scipy >= 1.7.3 （积分运算）
+shapely >= 2.0.1 （自定义Env障碍表示）
 
-numpy >= 1.22.3 （矩阵运算）
-
-matplotlib >= 3.5.1 （可视化）
+matplotlib >= 3.5.1 （自定义Env可视化）
 
 ###### 广告：
 
