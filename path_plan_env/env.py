@@ -1,19 +1,19 @@
 # -*- coding: utf-8 -*-
 """
+路径规划强化学习环境
  Created on Tue May 16 2023 17:54:17
  Modified on 2023-8-02 17:38:00
  
  @auther: HJ https://github.com/zhaohaojie1998
 """
 #
-
-# 路径规划强化学习环境
 import gym
 import math
 import numpy as np
 import matplotlib.pyplot as plt
 from gym import spaces
 from copy import deepcopy
+from pathlib import Path
 from collections import deque
 from scipy.integrate import odeint
 from shapely import geometry as geo
@@ -27,9 +27,9 @@ __all__ = ["DynamicPathPlanning", "StaticPathPlanning", "NormalizedActionsWrappe
 # 地图设置
 class MAP:
     size = [[-10.0, -10.0], [10.0, 10.0]] # x, z最小值; x, z最大值
-    start_pos = [0, -9]           # 起点坐标
-    end_pos = [2.5, 9]            # 终点坐标
-    obstacles = [                 # 障碍物, 要求为 geo.Polygon 或 带buffer的 geo.Point/geo.LineString
+    start_pos = [0, -9]                   # 起点坐标
+    end_pos = [2.5, 9]                    # 终点坐标
+    obstacles = [                         # 障碍物, 要求为 geo.Polygon 或 带buffer的 geo.Point/geo.LineString
         geo.Point(0, 2.5).buffer(4),
         geo.Point(-6, -5).buffer(3),
         geo.Point(6, -5).buffer(3),
@@ -166,6 +166,10 @@ class DynamicPathPlanning(gym.Env):
         if self.__old_gym:
             return obs, rew, done, info
         return obs, rew, done, truncated, info
+    
+    def plot(self, file):
+        """绘图输出"""
+
     
     def render(self, mode="human"):
         """可视化环境, 和step交替调用"""
