@@ -114,7 +114,7 @@ class PiNet(nn.Module):
 
 
 '''实例化环境'''
-from env import StaticPathPlanning, NormalizedActionsWrapper
+from path_plan_env import StaticPathPlanning, NormalizedActionsWrapper
 env = NormalizedActionsWrapper(StaticPathPlanning())
 obs_space = env.observation_space
 act_space = env.action_space
@@ -147,8 +147,6 @@ agent.cuda()
 
 '''训练LOOP''' 
 MAX_EPISODE = 2000        # 总的训练/评估次数
-render = False           # 是否可视化训练/评估过程(仿真速度会降几百倍)
-
 for episode in range(MAX_EPISODE):
     ## 重置回合奖励
     ep_reward = 0
@@ -156,9 +154,6 @@ for episode in range(MAX_EPISODE):
     obs = env.reset()
     ## 进行一回合仿真
     for steps in range(env.max_episode_steps):
-        # 可视化
-        if render:
-            env.render()
         # 决策
         act = agent.select_action(obs)  # 随机策略
         # 仿真
@@ -177,7 +172,7 @@ for episode in range(MAX_EPISODE):
             obs = deepcopy(next_obs)
     #end for
 #end for
-agent.export("policy_static.onnx") # 导出策略模型
+agent.export("./path_plan_env/policy_static.onnx") # 导出策略模型
 # agent.save("./checkpoint") # 存储算法训练进度
 # agent.load("./checkpoint") # 加载算法训练进度
 
