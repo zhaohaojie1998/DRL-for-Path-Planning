@@ -14,7 +14,7 @@ SAC-Auto算法主模块
 
 ```python
 agent = SAC_Agent(env, kwargs=...)      # 初始化算法, 并设置SAC的训练参数
-agent.set_buffer(buffer)		        # 为算法自定义replay buffer
+agent.set_buffer(buffer)                # 为算法自定义replay buffer
 agent.set_nn(actor, critic, kwargs=...) # 为算法自定义神经网络
 # 更多具体接口信息通过help函数查看DocString
 ```
