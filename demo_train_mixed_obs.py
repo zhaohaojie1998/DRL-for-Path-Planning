@@ -144,8 +144,8 @@ class QNet(nn.Module):
             nn.Linear(256, 1),
         )
 
-    def forward(self, feature):
-        return self.mlp(feature)
+    def forward(self, feature_and_action):
+        return self.mlp(feature_and_action)
 
 # 策略函数
 class PiNet(nn.Module):
