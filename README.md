@@ -61,7 +61,7 @@ agent.use_per # 算法属性, 查看是否使用PER, 默认跟随buffer设置
 
 - 要求**观测Encoder**输入为观测 *batch_obs* 张量，输出形状为(batch, feature_dim)的特征 *batch_feature* 张量。要求forward函数只接受一个位置参数obs，混合观测要求传入的obs为张量字典dict[any, Tensor] / 张量列表list[Tensor] / 张量元组tuple[Tensor, ...]。
 - 要求**策略函数**输入为特征 *batch_feature* 张量，输出形状为(batch, action_dim)的未经tanh激活的均值 *batch_mu* 张量和对数标准差 *batch_logstd* 张量。要求forward函数只接受一个位置参数feature，形状为(batch, feature_dim)。
-- 要求**Q函数**输入为特征 *batch_feature* 张量+动作 *batch_action* 张量，输出形状为(batch, 1)的Q值 *batch_q* 张量。要求forward函数只接受两个位置参数feature和action，形状为(batch, feature_dim)和(batch, action_dim)。
+- 要求**Q函数**输入为特征 *batch_feature* 张量+动作 *batch_action* 张量，输出形状为(batch, 1)的Q值 *batch_q* 张量。要求forward函数只接受一个位置参数*feature_and_action*，形状为(batch, feature_dim+action_dim)。
 
 ##### 1.自定义神经网络示例
 
