@@ -96,7 +96,7 @@ class LidarModel:
             mode (int): 返回模式(默认0)\n
 
         Returns:
-            scan_data (ndarray): 激光扫描数据, shape = (3, num_angle), 第0维为扫描角度, 第1维为测距(-1表示没障碍, -2表示在Polygon障碍里面), 第2维表示点云强度.\n
+            scan_data (ndarray): 激光扫描数据, shape = (3, num_angle), 第0维为扫描角度, 第1维为测距(-1表示没障碍, 0表示在Polygon障碍里面), 第2维表示点云强度.\n
             scan_points (list[list], mode!=0): 测量到的障碍点的位置, 空list无障碍, len0 = 0~num_angle, len1 = 2.\n
         """
         scan_data = np.vstack((self.__angles, -np.ones_like(self.__angles), np.zeros_like(self.__angles))) # (3, num_angle)
@@ -104,7 +104,7 @@ class LidarModel:
         # 碰撞检测
         for o in self.__obstacles:
             if o.geom_type == "Polygon" and o.contains(Point(x, y)):
-                scan_data[1, :] = -2
+                scan_data[1, :] = 0
                 return scan_data if mode == 0 else (scan_data, scan_points)
         # 雷达测距
         for i, angle in enumerate(self.__angles):
