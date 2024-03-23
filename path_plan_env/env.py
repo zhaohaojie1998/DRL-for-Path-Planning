@@ -23,8 +23,7 @@ __all__ = ["DynamicPathPlanning", "StaticPathPlanning", "NormalizedActionsWrappe
 
 
 
-#----------------------------- ↓↓↓↓↓ 参数设置 ↓↓↓↓↓ ------------------------------#
-# 地图设置
+#----------------------------- ↓↓↓↓↓ 地图设置 ↓↓↓↓↓ ------------------------------#
 class MAP:
     size = [[-10.0, -10.0], [10.0, 10.0]] # x, z最小值; x, z最大值
     start_pos = [0, -9]                   # 起点坐标
@@ -58,7 +57,18 @@ class MAP:
         ax.grid(alpha=0.3, ls=':')
         plt.show(block=True)
 
-        
+
+
+
+#----------------------------- ↓↓↓↓↓ 动力学避障环境 ↓↓↓↓↓ ------------------------------#
+if __name__ == '__main__':
+    from lidar_sim import LidarModel
+else:
+    from .lidar_sim import LidarModel
+class Logger:
+    pass
+
+
 # 运动速度设置
 V_LOW = 0.05
 V_HIGH = 0.2
@@ -66,8 +76,8 @@ V_HIGH = 0.2
 STATE_LOW = [MAP.size[0][0], MAP.size[0][1], V_LOW, -math.pi] # x, z, V, ψ
 STATE_HIGH = [MAP.size[1][0], MAP.size[1][1], V_HIGH, math.pi] # x, z, V, ψ
 # 观测设置
-OBS_STATE_LOW = [0, -math.pi, V_LOW]                                                                  # 相对终点距离 + 相对终点方位角 rad + 速度
-OBS_STATE_HIGH = [1.414*max(STATE_HIGH[0]-STATE_LOW[0], STATE_HIGH[1]-STATE_LOW[1]), math.pi, V_HIGH] # 相对终点距离 + 相对终点方位角 rad + 速度
+OBS_STATE_LOW = [0, V_LOW, -math.pi]                                                                  # 相对终点距离 + 速度 + 终点与速度的夹角 rad
+OBS_STATE_HIGH = [1.414*max(STATE_HIGH[0]-STATE_LOW[0], STATE_HIGH[1]-STATE_LOW[1]), V_HIGH, math.pi] # 相对终点距离 + 速度 + 终点与速度的夹角 rad
 # 控制设置
 CTRL_LOW = [-0.02, -math.pi/3] # 切向过载 + 速度滚转角 rad
 CTRL_HIGH = [0.02, math.pi/3]  # 切向过载 + 速度滚转角 rad
@@ -77,100 +87,178 @@ SCAN_ANGLE = 128 # 扫描范围 deg
 SCAN_NUM = 128   # 扫描点个数
 # 碰撞半径
 SAFE_DISTANCE = 0.5
+# 目标误差距离
+ERR_DISTANCE = 0.5
 # 时间序列长度
 TIME_STEP = 4
 
 
-
-
-
-#----------------------------- ↓↓↓↓↓ 避障控制环境 ↓↓↓↓↓ ------------------------------#
-if __name__ == '__main__':
-    from lidar_sim import LidarModel
-else:
-    from .lidar_sim import LidarModel
-
-class Logger:
-    pass
-
 class DynamicPathPlanning(gym.Env):
-    """从力学与控制的角度进行规划
+    """从力学与控制的角度进行规划 (东天南坐标系)
     >>> dx/dt = V * cos(ψ)
     >>> dz/dt = -V * sin(ψ)
     >>> dV/dt = g * nx
     >>> dψ/dt = -g / V * tan(μ)
     >>> u = [nx, μ]
-    obs_state space = [d_start, ε_start, d_end, ε_end, V, ψ]
     """
 
-    def __init__(self, max_episode_steps=200, dt=0.5, use_old_gym=True):
+    def __init__(self, max_episode_steps=200, dt=0.5, old_gym_style=True):
         """最大回合步数, 决策周期, 是否采用老版接口
         """
         # 仿真
         self.dt = dt
-        self.time_step = 0
         self.max_episode_steps = max_episode_steps
-        self.logger = Logger
-        # 地图
-        self.map = MAP
+        # 障碍 + 雷达
         self.obstacles = MAP.obstacles
         self.lidar = LidarModel(SCAN_RANGE, SCAN_ANGLE, SCAN_NUM)
         self.lidar.add_obstacles(MAP.obstacles)
-        self.safe_distance = SAFE_DISTANCE
         # 状态空间 + 控制空间
         self.state_space = spaces.Box(np.array(STATE_LOW), np.array(STATE_HIGH))
         self.control_space = spaces.Box(np.array(CTRL_LOW), np.array(CTRL_HIGH))
         # 观测空间 + 动作空间
-        obs_points = spaces.Box(0, SCAN_RANGE, (TIME_STEP, SCAN_NUM, )) # seq_len, dim
-        obs_vector = spaces.Box(np.array([OBS_STATE_LOW]*TIME_STEP), np.array([OBS_STATE_HIGH]*TIME_STEP)) # seq_len, dim
-        self.observation_space = spaces.Dict({'seq_points': obs_points, 'seq_vector': obs_vector})
+        points_space = spaces.Box(-1, SCAN_RANGE, (TIME_STEP, SCAN_NUM, )) # seq_len, dim
+        vector_space = spaces.Box(np.array([OBS_STATE_LOW]*TIME_STEP), np.array([OBS_STATE_HIGH]*TIME_STEP)) # seq_len, dim
+        self.observation_space = spaces.Dict({'seq_points': points_space, 'seq_vector': vector_space})
         self.action_space = spaces.Box(-1, 1, (len(CTRL_LOW), ))
         # 序列观测
         self.deque_points = deque(maxlen=TIME_STEP)
         self.deque_vector = deque(maxlen=TIME_STEP)
         # 环境控制
         self.__need_reset = True
-        self.__old_gym = use_old_gym
-    
-    def _get_u(self, a, u_last=None, tau=None):
-        lb = self.control_space.low
-        ub = self.control_space.high
-        u = lb + (a + 1.0) * 0.5 * (ub - lb) # [-1,1] -> [lb,ub]
-        u = np.clip(u, lb, ub)
-        # smooth control signal u
-        if u_last is not None and tau is not None:
-            u = (1. - tau) * u_last + tau * u
-        return u
+        self.__old_gym = old_gym_style
 
     def reset(self, mode=0):
-        """mode=0, 随机初始化起点终点
-           mode=1, 初始化起点终点到地图设置
+        """重置环境
+           mode=0, 随机初始化起点终点, 速度、方向随机
+           mode=1, 初始化起点终点到地图设置, 速度、方向随机
         """
         self.__need_reset = False
-        obs, info = None, {}
+        self.time_step = 0
+        # 初始化状态
+        while 1:
+            self.state = self.state_space.sample()
+            if mode == 0:
+                self.start_pos = deepcopy(self.state[:2]) # 分不清引用传递, 暴力deepcopy就完事了
+                self.end_pos = deepcopy(self.state_space.sample()[:2])
+            else:
+                self.start_pos = np.array(MAP.start_pos, dtype=np.float32)
+                self.end_pos = np.array(MAP.end_pos, dtype=np.float32)
+                self.state = np.array([*self.start_pos[:2], *self.state[2:]], dtype=np.float32)
+            for o in self.obstacles:
+                if o.contains(geo.Point(*self.start_pos)) \
+                or o.contains(geo.Point(*self.end_pos)):
+                    break
+            else:
+                break
+        # 初始化观测
+        self.deque_points.extend([np.array([-1]*SCAN_NUM, dtype=np.float32)]*(TIME_STEP-1)) # 初始化到 -1
+        self.deque_vector.extend([np.array(OBS_STATE_LOW, dtype=np.float32)]*(TIME_STEP-1)) # 初始化到 low
+        obs = self.get_obs(self.state)
+        # 初始化记忆
+        self.u_last = np.zeros_like(self.action_space.shape, dtype=np.float32) # 上一时刻唱跳rap篮球
+        self.D_init = deepcopy(obs['seq_vector'][-1][0]) # 初始到目标距离
+        self.D_last = deepcopy(obs['seq_vector'][-1][0]) # 上一时刻到目标距离
+        self.L = 0.0 # 已走航程
+        # 重置log
+        self.log = Logger()
+        self.log.start_pos = self.start_pos       # 起点
+        self.log.end_pos = self.end_pos           # 目标
+        self.log.path = [self.start_pos]          # 路径
+        self.log.ctrl = [self.u_last]             # 控制
+        self.log.speed = [self.state[2]]          # 速度
+        self.log.length = [[self.L, self.D_last]] # 航程+距离
+        # 输出
         if self.__old_gym:
-            return obs
-        return obs, info
+            return self.norm_obs(obs)
+        return self.norm_obs(obs), {}
     
-    def step(self, act):
+    def get_ctrl(self, act, tau=0.9):
+        """获取控制"""
+        lb = self.control_space.low
+        ub = self.control_space.high
+        u = lb + (act + 1.0) * 0.5 * (ub - lb) # [-1,1] -> [lb,ub]
+        u = np.clip(u, lb, ub) # NOTE 浮点数误差有时会出现类似 1.0000001 情况
+        # smooth control signal
+        if tau is not None:
+            return (1.0 - tau) * self.u_last + tau * u
+        return u
+
+    def get_obs(self, state):
+        """获取原始观测"""
+        x, z, V, ψ = state
+        # 相对状态
+        V_vec = np.array([V*math.cos(ψ), -V*math.sin(ψ)], np.float32)
+        R_vec = self.end_pos - state[:2]
+        D = np.linalg.norm(R_vec)
+        #ε = self._compute_azimuth(state[:2], self.end_pos) # 方位角
+        q = self._vector_angle(V_vec, R_vec) # 视线角
+        vector = np.array([D, V, q], np.float32)
+        self.deque_vector.append(vector)
+        # 雷达测距
+        points = self.lidar.scan(x, z, -ψ)[1] # NOTE 东北天坐标系(LidarModel) 和 东天南坐标系(ControlModel) 的航迹偏角数值是相反的
+        self.deque_points.append(points)
+        # 观测空间
+        return {'seq_points': np.array(self.deque_points),
+                'seq_vector': np.array(self.deque_vector)}
+    
+    def get_rew(self, obs):
+        """获取奖励 (输入原始观测)"""
+        pass
+    
+    def step(self, act: np.ndarray, tau: float = None):
+        """状态转移
+        Args:
+            act (np.ndarray): 动作a(取值-1~1).
+            tau (float): 控制量u(取值u_min~u_max)的平滑系数: u = tau*u + (1-tau)*u_last. 默认None不平滑.
+        """
         assert not self.__need_reset, "调用step前必须先reset"
-
-        obs, rew, done, truncated, info = None, None, None, None, {}
-
+        # 数值鸡分
+        self.time_step += 1
+        u = self.get_ctrl(act, tau)
+        new_state = self._ode45(self.state, u, self.dt)
+        truncated = False
+        if self.time_step >= self.max_episode_steps:
+                truncated = True
+        elif new_state[0] > self.state_space.high[0] \
+            or new_state[1] > self.state_space.high[1] \
+            or new_state[0] < self.state_space.low[0] \
+            or new_state[1] < self.state_space.low[1]:
+                truncated = True
+        # 获取转移元组
+        obs = self.get_obs(new_state)
+        rew, done, info = self.get_rew(obs)
+        info["done"] = done
+        info["truncated"] = truncated
         if truncated or done:
             info["terminal"] = True
             self.__need_reset = True
         else:
             info["terminal"] = False
-
+        # 更新记忆
+        self.u_last = deepcopy(u)
+        self.D_last = deepcopy(obs['seq_vector'][-1][0])
+        self.L += np.linalg.norm(new_state[:2] - self.state[:2])
+        self.state = deepcopy(new_state)
+        # 记录
+        self.log.path.append(self.state[:2])
+        self.log.ctrl.append(self.u_last)
+        self.log.speed.append(self.state[2])
+        self.log.length.append([self.L, self.D_last])
+        # 输出
         if self.__old_gym:
-            return obs, rew, done, info
-        return obs, rew, done, truncated, info
+            return self.norm_obs(obs), rew, done, info
+        return self.norm_obs(obs), rew, done, truncated, info
     
-    def plot(self, file):
-        """绘图输出"""
+    def norm_obs(self, obs):
+        """归一化观测"""
+        obs['seq_vector'] = self._linear_mapping(
+            obs['seq_vector'], 
+            self.observation_space['seq_vector'].low, 
+            self.observation_space['seq_vector'].high
+        )
+        obs['seq_points'] = self._normalize_points(obs['seq_points'])
+        return obs
 
-    
     def render(self, mode="human"):
         """可视化环境, 和step交替调用"""
         assert not self.__need_reset, "调用render前必须先reset"
@@ -180,7 +268,7 @@ class DynamicPathPlanning(gym.Env):
     def __update_frame(self, frame):
         """更新动画"""
         pass
-
+    
     def close(self): 
         """关闭环境"""
         self.__need_reset = True
@@ -221,7 +309,7 @@ class DynamicPathPlanning(gym.Env):
     
     @staticmethod
     def _compute_azimuth(pos1, pos2, use_3d_pos=False):
-        """计算pos2相对pos1的方位角 [-π, π] 和高度角(3D情况) [-π/2, π/2] """
+        """东天南坐标系计算pos2相对pos1的方位角 [-π, π] 和高度角(3D情况) [-π/2, π/2] """
         if use_3d_pos:
             x, y, z = np.array(pos2) - pos1
             q = math.atan(y / (math.sqrt(x**2 + z**2) + 1e-8)) # 高度角 [-π/2, π/2]
@@ -233,7 +321,7 @@ class DynamicPathPlanning(gym.Env):
     
     @staticmethod
     def _fixed_wing_2d(s, t, u):
-        """平面运动ode模型
+        """东天南坐标系平面运动ode模型 (_fixed_wing_3d简化版) 
         s = [x, z, V, ψ]
         u = [nx, μ]
         """
@@ -247,44 +335,55 @@ class DynamicPathPlanning(gym.Env):
         ]
         return dsdt
     
-    @staticmethod
-    def _fixed_wing_3d(s, t, u):
-        """空间运动ode模型
-        s = [x, y, z, V, θ, ψ]
-        u = [nx, ny, μ]
-        """
-        _, _, _, V, θ, ψ = s
-        nx, ny, μ = u
-        if abs(math.cos(θ)) < 0.01:
-            dψdt = 0 # θ = 90° 没法积分了!!!
-        else:
-            dψdt = -9.8 * ny*math.sin(μ) / (V*math.cos(θ))
-        dsdt = [
-            V * math.cos(θ) * math.cos(ψ),
-            V * math.sin(θ),
-            -V * math.cos(θ) * math.sin(ψ),
-            9.8 * (nx - math.sin(θ)),
-            9.8/V * (ny*math.cos(μ) - math.cos(θ)),
-            dψdt
-        ]
-        return dsdt
-    
     @classmethod
-    def _ode45(cls, s_old, u, dt, use_3d_model=False):
+    def _ode45(cls, s_old, u, dt):
         """微分方程积分"""
-        model = cls._fixed_wing_3d if use_3d_model else cls._fixed_wing_2d
-        s_new = odeint(model, s_old, (0.0, dt), args=(u, )) # shape=(len(t), len(s))
-        return np.array(s_new[-1]) # deepcopy
-
-  
+        s_new = odeint(cls._fixed_wing_2d, s_old, (0.0, dt), args=(u, )) # shape=(len(t), len(s))
+        x, z, V, ψ = s_new[-1]
+        V = np.clip(V, V_LOW, V_HIGH)
+        ψ = cls._limit_angle(ψ)
+        return np.array([x, z, V, ψ], dtype=np.float32) # deepcopy
     
+    # @staticmethod
+    # def _fixed_wing_3d(s, t, u):
+    #     """东天南坐标系空间运动ode模型
+    #     s = [x, y, z, V, θ, ψ]
+    #     u = [nx, ny, μ]
+    #     """
+    #     _, _, _, V, θ, ψ = s
+    #     nx, ny, μ = u
+    #     if abs(math.cos(θ)) < 0.01:
+    #         dψdt = 0 # θ = 90° 没法积分了!!!
+    #     else:
+    #         dψdt = -9.8 * ny*math.sin(μ) / (V*math.cos(θ))
+    #     dsdt = [
+    #         V * math.cos(θ) * math.cos(ψ),
+    #         V * math.sin(θ),
+    #         -V * math.cos(θ) * math.sin(ψ),
+    #         9.8 * (nx - math.sin(θ)),
+    #         9.8/V * (ny*math.cos(μ) - math.cos(θ)),
+    #         dψdt
+    #     ]
+    #     return dsdt
+
+    def plot(self, file):
+        """绘图输出"""
+
+
+
+
+
+
+
+
+
 
 
 #----------------------------- ↓↓↓↓↓ 路径搜索环境 ↓↓↓↓↓ ------------------------------#
 class StaticPathPlanning(gym.Env):
     """从航点搜索的角度进行规划"""
 
-    def __init__(self, num_pos=6, max_search_steps=200, use_old_gym=True):
+    def __init__(self, num_pos=6, max_search_steps=200, old_gym_style=True):
         """起点终点之间的航点个数, 最大搜索次数, 是否采用老版接口
         """
         self.num_pos = num_pos
@@ -298,7 +397,7 @@ class StaticPathPlanning(gym.Env):
 
         self.__render_not_called = True
         self.__need_reset = True
-        self.__old_gym = use_old_gym
+        self.__old_gym = old_gym_style
 
     def reset(self):
         self.__need_reset = False
@@ -427,8 +526,13 @@ class StaticPathPlanning(gym.Env):
 
 
 
+
+
+
+
 #----------------------------- ↓↓↓↓↓ 环境-算法适配 ↓↓↓↓↓ ------------------------------#
 class NormalizedActionsWrapper(gym.ActionWrapper):
+    """非-1~1的连续动作空间环境装饰器"""
     def __init__(self, env):
         super(NormalizedActionsWrapper, self).__init__(env)
         assert isinstance(env.action_space, spaces.Box), '只用于Box动作空间'
@@ -448,6 +552,10 @@ class NormalizedActionsWrapper(gym.ActionWrapper):
         action = 2 * (action - lb) / (ub - lb) - 1
         return np.clip(action, -1.0, 1.0)
        
+
+
+
+
 
 
 
