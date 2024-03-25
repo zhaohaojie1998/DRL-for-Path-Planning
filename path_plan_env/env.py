@@ -42,21 +42,26 @@ class MAP:
         plt.close('all')
         fig, ax = plt.subplots()
         ax.clear()
+        cls.plot(ax)
+        ax.scatter(cls.start_pos[0], cls.start_pos[1], s=30, c='k', marker='x', label='起点')
+        ax.scatter(cls.end_pos[0], cls.end_pos[1], s=30, c='k', marker='o', label='终点')
+        ax.legend(loc='best').set_draggable(True)
+        plt.show(block=True)
+
+    @classmethod
+    def plot(cls, ax, title='Map'):
+        ax.clear()
         ax.set_aspect('equal')
+        ax.set_title(title)
+        ax.set_xlabel("x")
+        ax.set_ylabel("z")
+        ax.grid(alpha=0.3, ls=':')
         ax.set_xlim(cls.size[0][0], cls.size[1][0])
         ax.set_ylim(cls.size[0][1], cls.size[1][1])
         ax.invert_yaxis()
         for o in cls.obstacles:
             plot_polygon(o, facecolor='w', edgecolor='k', add_points=False)
-        ax.scatter(cls.start_pos[0], cls.start_pos[1], s=30, c='k', marker='x', label='起点')
-        ax.scatter(cls.end_pos[0], cls.end_pos[1], s=30, c='k', marker='o', label='终点')
-        ax.legend(loc='best').set_draggable(True)
-        ax.set_title('Map')
-        ax.set_xlabel("x")
-        ax.set_ylabel("z")
-        ax.grid(alpha=0.3, ls=':')
-        plt.show(block=True)
-
+        
 
 
 
@@ -81,8 +86,8 @@ STATE_HIGH = [MAP.size[1][0], MAP.size[1][1], V_HIGH, math.pi] # x, z, V, ψ
 OBS_STATE_LOW = [0, V_LOW, -math.pi]                                                                  # 相对终点距离 + 速度 + 终点与速度的夹角(单位rad)
 OBS_STATE_HIGH = [1.414*max(STATE_HIGH[0]-STATE_LOW[0], STATE_HIGH[1]-STATE_LOW[1]), V_HIGH, math.pi] # 相对终点距离 + 速度 + 终点与速度的夹角(单位rad)
 # 控制设置
-CTRL_LOW = [-0.02, -math.pi/3] # 切向过载 + 速度滚转角(单位rad)
-CTRL_HIGH = [0.02, math.pi/3]  # 切向过载 + 速度滚转角(单位rad)
+CTRL_LOW = [-0.02, -0.005] # 切向过载 + 速度滚转角(单位rad/s)
+CTRL_HIGH = [0.02, 0.005]  # 切向过载 + 速度滚转角(单位rad/s)
 # 雷达设置
 SCAN_RANGE = 5   # 扫描距离
 SCAN_ANGLE = 128 # 扫描范围(单位deg)
@@ -106,11 +111,17 @@ class DynamicPathPlanning(gym.Env):
     """
 
     def __init__(self, max_episode_steps=200, dt=0.5, normalize_observation=True, old_gym_style=True):
-        """最大回合步数, 决策周期, 是否输出归一化的观测, 是否采用老版接口
+        """
+        Args:
+            max_episode_steps (int): 最大仿真步数. 默认200.
+            dt (float): 决策周期. 默认0.5.
+            normalize_observation (bool): 是否输出归一化的观测. 默认True.
+            old_gym_style (bool): 是否采用老版gym接口. 默认True.
         """
         # 仿真
         self.dt = dt
         self.max_episode_steps = max_episode_steps
+        self.log = Logger()
         # 障碍 + 雷达
         self.obstacles = MAP.obstacles
         self.lidar = LidarModel(SCAN_RANGE, SCAN_ANGLE, SCAN_NUM)
@@ -127,9 +138,14 @@ class DynamicPathPlanning(gym.Env):
         self.deque_points = deque(maxlen=TIME_STEP)
         self.deque_vector = deque(maxlen=TIME_STEP)
         # 环境控制
+        self.__render_not_called = True
         self.__need_reset = True
         self.__norm_observation = normalize_observation
         self.__old_gym = old_gym_style
+        # plt设置
+        plt.rcParams['font.sans-serif'] = ['Microsoft YaHei']
+        plt.rcParams['axes.unicode_minus'] = False
+        plt.close("all")
 
     def reset(self, mode=0):
         """重置环境
@@ -165,13 +181,14 @@ class DynamicPathPlanning(gym.Env):
         self.D_init = deepcopy(obs['seq_vector'][-1][0]) # 初始到目标距离
         self.D_last = deepcopy(obs['seq_vector'][-1][0]) # 上一时刻到目标距离
         # 重置log
-        self.log = Logger()
         self.log.start_pos = self.start_pos       # 起点
         self.log.end_pos = self.end_pos           # 目标
         self.log.path = [self.start_pos]          # 路径
         self.log.ctrl = [self.ctrl]               # 控制
         self.log.speed = [self.state[2]]          # 速度
+        self.log.yaw = [self.state[3]]            # 偏角
         self.log.length = [[self.L, self.D_last]] # 航程+距离
+        self.log.curr_scan_pos = []               # 当前时刻扫描的障碍坐标
         # 输出
         if self.__old_gym:
             return self._norm_obs(obs)
@@ -200,8 +217,9 @@ class DynamicPathPlanning(gym.Env):
         vector = np.array([D, V, q], np.float32)
         self.deque_vector.append(vector)
         # 雷达测距
-        points = self.lidar.scan(x, z, -ψ)[1] # NOTE 东北天坐标系(LidarModel) 和 东天南坐标系(ControlModel) 的航迹偏角数值是相反的
-        self.deque_points.append(points)
+        points, self.log.curr_scan_pos = self.lidar.scan(x, z, -ψ, mode=1) 
+        # NOTE 东北天坐标系(LidarModel) 和 东天南坐标系(ControlModel) 航迹偏角ψ 的数值是相反的
+        self.deque_points.append(points[1]) # 只需要测距维度
         # 观测空间
         return {'seq_points': np.array(self.deque_points),
                 'seq_vector': np.array(self.deque_vector)}
@@ -298,7 +316,7 @@ class DynamicPathPlanning(gym.Env):
         self.ctrl = deepcopy(u)
         # 获取转移元组
         obs = self._get_obs(new_state)
-        rew, done, info = self._get_rew(obs)
+        rew, done, info = self._get_rew()
         info["done"] = done
         info["truncated"] = truncated
         if truncated or done:
@@ -306,10 +324,15 @@ class DynamicPathPlanning(gym.Env):
             self.__need_reset = True
         else:
             info["terminal"] = False
+        info["reward"] = rew
+        info["time_step"] = self.time_step
+        info["voyage"] = self.L
+        info["distance"] = self.D_last
         # 记录
         self.log.path.append(self.state[:2])
         self.log.ctrl.append(self.ctrl)
         self.log.speed.append(self.state[2])
+        self.log.yaw.append(self.state[3])
         self.log.length.append([self.L, self.D_last])
         # 输出
         if self.__old_gym:
@@ -328,20 +351,48 @@ class DynamicPathPlanning(gym.Env):
         obs['seq_points'] = self._normalize_points(obs['seq_points'])
         return obs
     
-    def render(self, mode="human"):
+    def render(self, mode="human", figsize=[8,8]):
         """可视化环境, 和step交替调用"""
         assert not self.__need_reset, "调用render前必须先reset"
-        frame = None
-        self.__update_frame(frame)
-
-    def __update_frame(self, frame):
-        """更新动画"""
-        pass
+        # 创建绘图窗口
+        if self.__render_not_called:
+            self.__render_not_called = False
+            with plt.ion():
+                fig = plt.figure("render", figsize=figsize)
+            ax = fig.add_axes([0.1, 0.1, 0.8, 0.8])
+            MAP.plot(ax, "Path Plan Environment")
+            self.__plt_car_path, = ax.plot([], [], 'k-.')
+            self.__plt_car_point = ax.scatter([], [], s=15, c='b',  marker='o', label='Agent')
+            self.__plt_targ_range, = ax.plot([], [], 'g:', linewidth=1.0)
+            self.__plt_targ_point = ax.scatter([], [], s=15, c='g', marker='o', label='Target')
+            self.__plt_lidar_scan, = ax.plot([], [], 'ro', markersize=1.5, label='Points')
+            self.__plt_lidar_left, = ax.plot([], [], 'c--', linewidth=0.5)
+            self.__plt_lidar_right, = ax.plot([], [], 'c--', linewidth=0.5)
+            ax.legend(loc='best').set_draggable(True)
+        # 绘图
+        self.__plt_car_path.set_data(np.array(self.log.path).T) # [xxxxyyyy]
+        self.__plt_car_point.set_offsets(self.log.path[-1])     # [xyxyxyxy]
+        θ = np.linspace(0, 2*np.pi, 18)
+        self.__plt_targ_range.set_data(self.log.end_pos[0]+D_ERR*np.cos(θ), self.log.end_pos[1]+D_ERR*np.sin(θ))
+        self.__plt_targ_point.set_offsets(self.log.end_pos)
+        if self.log.curr_scan_pos:
+            points = np.array(self.log.curr_scan_pos)
+            self.__plt_lidar_scan.set_data(points[:, 0], points[:, 1])
+        x, y, yaw = *self.log.path[-1], self.log.yaw[-1]
+        x1 = x + self.lidar.max_range * np.cos(-yaw + np.deg2rad(self.lidar.scan_angle/2))
+        x2 = x + self.lidar.max_range * np.cos(-yaw - np.deg2rad(self.lidar.scan_angle/2))
+        y1 = y + self.lidar.max_range * np.sin(-yaw + np.deg2rad(self.lidar.scan_angle/2))
+        y2 = y + self.lidar.max_range * np.sin(-yaw - np.deg2rad(self.lidar.scan_angle/2))
+        self.__plt_lidar_left.set_data([x, x1], [y, y1])
+        self.__plt_lidar_right.set_data([x, x2], [y, y2])
+        # 窗口暂停
+        plt.pause(0.001)
     
     def close(self): 
         """关闭环境"""
+        self.__render_not_called = True
         self.__need_reset = True
-        plt.close()
+        plt.close("render")
     
     @staticmethod
     def _limit_angle(x, domain=1):
@@ -437,7 +488,45 @@ class DynamicPathPlanning(gym.Env):
 
     def plot(self, file):
         """绘图输出"""
+        pass
 
+
+
+
+
+
+'''------------------------↑↑↑↑↑ 动态避障环境 ↑↑↑↑↑---------------------------
+#                                          ...
+#                                       .=BBBB#-
+#                                      .B%&&&&&&#
+#                                .=##-.#&&&&&#%&%
+#                              -B&&&&&#=&&&&&B=-.
+#                             =&@&&&&&&==&&&&@B
+#                           -%@@@&&&&&&&.%&&&&@%.
+#                          =&@@@%%@&&&&@#=B&&@@@%
+#                         =@@@$#.%@@@@@@=B@@&&@@@-
+#                         .&@@@%&@@@@@@&-&@@@%&@@=
+#                            #&@@@&@@@@@B=@@@@&B@@=
+#                             -%@@@@@@@#B@@@@@B&@-
+#                              .B%&&&&@B&@@@@@&@#
+#                             #B###BBBBBBB%%&&%#
+#                            .######BBBBBBBBBB.
+#                            =####BBBBBBBBBBBB#-
+#                          .=####BB%%B%%%%%%BB##=
+#                         .=##BBB%%#-  -#%%%BBB##.
+#                        .=##BBB%#.      .#%%BBBB#.
+#                        =##BB%%-          =%%BBBB=
+#                       =#BB%%B-            .B%%%B#-
+#                      =##BBB-                -BB###.
+#                     -=##BB-                  -##=#-
+#                     ==##B=-                  -####=
+#                     =##B#-                   -####=
+#                     ###B=                     =###=
+#                    =##B#-                      ###=
+#                    =BB#=                       =BB=
+#                   -%&%                         =&&#
+#                   %&%%                         B%&&=
+---------------------------↓↓↓↓↓ 静态避障环境 ↓↓↓↓↓---------------------------'''
 
 
 
@@ -453,7 +542,11 @@ class StaticPathPlanning(gym.Env):
     """从航点搜索的角度进行规划"""
 
     def __init__(self, num_pos=6, max_search_steps=200, old_gym_style=True):
-        """起点终点之间的航点个数, 最大搜索次数, 是否采用老版接口
+        """
+        Args:
+            num_pos (int): 起点终点之间的航点个数. 默认6.
+            max_search_steps (int): 最大搜索步数. 默认200.
+            old_gym_style (bool): 是否采用老版gym接口. 默认True.
         """
         self.num_pos = num_pos
         self.map = MAP
@@ -467,6 +560,10 @@ class StaticPathPlanning(gym.Env):
         self.__render_not_called = True
         self.__need_reset = True
         self.__old_gym = old_gym_style
+
+        plt.rcParams['font.sans-serif'] = ['Microsoft YaHei']
+        plt.rcParams['axes.unicode_minus'] = False
+        plt.close("all")
 
     def reset(self):
         self.__need_reset = False
@@ -573,7 +670,7 @@ class StaticPathPlanning(gym.Env):
         traj = self.map.start_pos + self.obs.tolist() + self.map.end_pos # [x,y,x,y,x,y,]
         plt.plot(traj[::2], traj[1::2], label='path', color='b')
         # 设置信息
-        plt.title('Path Planning')
+        plt.title('Path Search Environment')
         plt.legend(loc='best')
         plt.xlabel("x")
         plt.ylabel("z")
@@ -630,4 +727,17 @@ class NormalizedActionsWrapper(gym.ActionWrapper):
 
 
 if __name__ == '__main__':
-    MAP.show()
+    # MAP.show()
+    env = DynamicPathPlanning()
+    terminal = False
+    for ep in range(10):
+        print(f"episode{ep}: begin")
+        obs = env.reset()
+        while 1:
+            try:
+                env.render()
+                obs, rew, done, info = env.step(np.array([0, 0.2]))
+                print(info)
+            except:
+                break
+        print(f"episode{ep}: end")
