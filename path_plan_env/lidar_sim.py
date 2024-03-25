@@ -33,7 +33,7 @@ def plot_shapely(geom, ax=None, color=None):
 # 只因光雷达模型
 class LidarModel:
     def __init__(self, max_range=500.0, scan_angle=128.0, num_angle=128):
-        """激光雷达模型
+        """激光雷达模型 (东北天坐标系)
         Args:
             max_range (float): 最大扫描距离(m).
             scan_angle (float): 最大扫描角度(deg).
