@@ -365,9 +365,11 @@ class SAC_Agent:
         assert self.__set_nn, "未设置神经网络!"
         assert self.__set_buffer, "未设置ReplayBuffer!"
         data_dir = Path(data_dir)
-        th.save(self.actor.state_dict(), data_dir/'state_dict'/'actor.pth')
-        th.save(self.q_critic.state_dict(), data_dir/'state_dict'/'critic.pth')
-        th.save(self.target_q_critic.state_dict(), data_dir/'state_dict'/'target_critic.pth')
+        model_dir = data_dir/'state_dict'
+        model_dir.mkdir(parents=True, exist_ok=True)
+        th.save(self.actor.state_dict(), model_dir/'actor.pth')
+        th.save(self.q_critic.state_dict(), model_dir/'critic.pth')
+        th.save(self.target_q_critic.state_dict(), model_dir/'target_critic.pth')
         self.buffer.save(data_dir/'buffer')
         #存储 温度系数/优化器/算法参数等, 代码略
         
@@ -397,6 +399,8 @@ class SAC_Agent:
             output_logprob (bool): 模型是否计算SAC的策略信息熵. 默认False.
         """
         assert self.__set_nn, "未设置神经网络!"
+        file = Path(file).with_suffix('.onnx')
+        file.parents[0].mkdir(parents=True, exist_ok=True)
         # 输入输出设置
         device = deepcopy(self.device)
         self.to(map_device)
@@ -412,7 +416,7 @@ class SAC_Agent:
         th.onnx.export(
             self.actor, 
             dummy_input,
-            Path(file).with_suffix('.onnx'), 
+            file, 
             input_names = input_names,
             output_names = output_names,
             dynamic_axes = dynamic_axes,
