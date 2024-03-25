@@ -60,7 +60,7 @@ class MAP:
         ax.set_ylim(cls.size[0][1], cls.size[1][1])
         ax.invert_yaxis()
         for o in cls.obstacles:
-            plot_polygon(o, facecolor='w', edgecolor='k', add_points=False)
+            plot_polygon(o, ax=ax, facecolor='w', edgecolor='k', add_points=False)
         
 
 
@@ -171,7 +171,7 @@ class DynamicPathPlanning(gym.Env):
             else:
                 break
         self.L = 0.0                                                         # 航程
-        self.ctrl = np.zeros_like(self.action_space.shape, dtype=np.float32) # 初始控制量
+        self.ctrl = np.zeros(self.action_space.shape, dtype=np.float32) # 初始控制量
         # 初始化观测
         self.deque_points.extend([np.array([-1]*SCAN_NUM, dtype=np.float32)]*(TIME_STEP-1)) # 初始化到 -1
         self.deque_vector.extend([np.array(OBS_STATE_LOW, dtype=np.float32)]*(TIME_STEP-1)) # 初始化到 low
@@ -330,7 +330,7 @@ class DynamicPathPlanning(gym.Env):
         info["distance"] = self.D_last
         # 记录
         self.log.path.append(self.state[:2])
-        self.log.ctrl.append(self.ctrl)
+        self.log.ctrl.append(u)
         self.log.speed.append(self.state[2])
         self.log.yaw.append(self.state[3])
         self.log.length.append([self.L, self.D_last])
@@ -387,12 +387,49 @@ class DynamicPathPlanning(gym.Env):
         self.__plt_lidar_right.set_data([x, x2], [y, y2])
         # 窗口暂停
         plt.pause(0.001)
-    
+
     def close(self): 
         """关闭环境"""
         self.__render_not_called = True
         self.__need_reset = True
         plt.close("render")
+
+    def plot(self, file, figsize=[10,10], dpi=100):
+        """绘图输出"""
+        file = Path(file).with_suffix(".png")
+        fig = plt.figure("Output", figsize=figsize)
+        gs = fig.add_gridspec(2, 2) 
+        ax1 = fig.add_subplot(gs[0, 0]) 
+        ax2 = fig.add_subplot(gs[0, 1])
+        ax3 = fig.add_subplot(gs[1, 0])
+        ax4 = fig.add_subplot(gs[1, 1])
+        MAP.plot(ax1, "Trajectory")
+        ax1.scatter(*self.log.path[0], s=30, c='k', marker='x', label='start')
+        ax1.scatter(*self.log.end_pos, s=30, c='k', marker='o', label='target')
+        ax1.plot(*np.array(self.log.path).T, color='b', label='path') # [xxxxyyyy]
+        ax1.legend(loc="best").set_draggable(True)
+        ax2.set_title("Control Signal")
+        ax2.set_xlabel("time step")
+        ax2.set_ylabel("control")
+        ctrl = np.array(self.log.ctrl).T
+        for i, u in enumerate(ctrl):
+            ax2.plot(u, label=f'u{i}')
+        ax2.legend(loc="best").set_draggable(True)
+        ax3.set_title("Speed Signal")
+        ax3.set_xlabel("time step")
+        ax3.set_ylabel("speed")
+        ax3.plot(self.log.speed, label='V')
+        ax3.legend(loc="best").set_draggable(True)
+        ax4.set_title("Length Signal")
+        ax4.set_xlabel("time step")
+        ax4.set_ylabel("length")
+        length = np.array(self.log.length).T
+        ax4.plot(length[0], label='voyage')
+        ax4.plot(length[1], label='distance')
+        ax4.legend(loc="best").set_draggable(True)
+        plt.tight_layout()
+        fig.savefig(fname=file, dpi=dpi)
+        plt.close("Output")
     
     @staticmethod
     def _limit_angle(x, domain=1):
@@ -486,9 +523,8 @@ class DynamicPathPlanning(gym.Env):
         ψ = cls._limit_angle(ψ)
         return np.array([x, z, V, ψ], dtype=np.float32) # deepcopy
 
-    def plot(self, file):
-        """绘图输出"""
-        pass
+    
+
 
 
 
@@ -735,9 +771,10 @@ if __name__ == '__main__':
         obs = env.reset()
         while 1:
             try:
-                env.render()
-                obs, rew, done, info = env.step(np.array([0, 0.2]))
+                #env.render()
+                obs, rew, done, info = env.step(np.array([0.5, 0.2]))
                 print(info)
             except:
                 break
+        env.plot(f"output{ep}")
         print(f"episode{ep}: end")
