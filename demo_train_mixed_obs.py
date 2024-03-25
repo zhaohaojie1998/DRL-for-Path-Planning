@@ -207,6 +207,7 @@ log = SummaryWriter(log_dir = "./tensorboard_log")
 
 MAX_EPISODE = 50000
 LEARN_FREQ = 10
+OUTPUT_FREQ = 50
 for episode in range(MAX_EPISODE):
     ## 重置回合奖励
     ep_reward = 0
@@ -235,6 +236,8 @@ for episode in range(MAX_EPISODE):
     ## 训练
     if episode % LEARN_FREQ == 0:
         train_info = agent.learn()
+    if episode % OUTPUT_FREQ == 0:
+        env.plot(f"./output/out{episode}.png")
 #end for
 agent.export("./path_plan_env/policy_dynamic.onnx") # 导出策略模型
 # agent.save("./checkpoint") # 存储算法训练进度
