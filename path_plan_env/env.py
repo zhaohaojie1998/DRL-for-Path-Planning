@@ -70,26 +70,29 @@ class Logger:
 
 
 # 运动速度设置
-V_LOW = 0.05
-V_HIGH = 0.2
+V_LOW = 0.05 # 最小速度
+V_HIGH = 0.2 # 最大速度
+V_MIN = V_LOW + 0.03  # 惩罚区间下限(大于V_LOW)
+V_MAX = V_HIGH - 0.03 # 惩罚区间上限(小于V_HIGH)
 # 质心动力学状态设置
 STATE_LOW = [MAP.size[0][0], MAP.size[0][1], V_LOW, -math.pi] # x, z, V, ψ
 STATE_HIGH = [MAP.size[1][0], MAP.size[1][1], V_HIGH, math.pi] # x, z, V, ψ
 # 观测设置
-OBS_STATE_LOW = [0, V_LOW, -math.pi]                                                                  # 相对终点距离 + 速度 + 终点与速度的夹角 rad
-OBS_STATE_HIGH = [1.414*max(STATE_HIGH[0]-STATE_LOW[0], STATE_HIGH[1]-STATE_LOW[1]), V_HIGH, math.pi] # 相对终点距离 + 速度 + 终点与速度的夹角 rad
+OBS_STATE_LOW = [0, V_LOW, -math.pi]                                                                  # 相对终点距离 + 速度 + 终点与速度的夹角(单位rad)
+OBS_STATE_HIGH = [1.414*max(STATE_HIGH[0]-STATE_LOW[0], STATE_HIGH[1]-STATE_LOW[1]), V_HIGH, math.pi] # 相对终点距离 + 速度 + 终点与速度的夹角(单位rad)
 # 控制设置
-CTRL_LOW = [-0.02, -math.pi/3] # 切向过载 + 速度滚转角 rad
-CTRL_HIGH = [0.02, math.pi/3]  # 切向过载 + 速度滚转角 rad
+CTRL_LOW = [-0.02, -math.pi/3] # 切向过载 + 速度滚转角(单位rad)
+CTRL_HIGH = [0.02, math.pi/3]  # 切向过载 + 速度滚转角(单位rad)
 # 雷达设置
 SCAN_RANGE = 5   # 扫描距离
-SCAN_ANGLE = 128 # 扫描范围 deg
+SCAN_ANGLE = 128 # 扫描范围(单位deg)
 SCAN_NUM = 128   # 扫描点个数
-# 碰撞半径
-SAFE_DISTANCE = 0.5
-# 目标误差距离
-ERR_DISTANCE = 0.5
-# 时间序列长度
+SCAN_CEN = 48    # 中心区域index开始位置(小于SCAN_NUM/2)
+# 距离设置
+D_SAFE = 0.5 # 碰撞半径
+D_BUFF = 1.0 # 缓冲距离(大于D_SAFE)
+D_ERR = 0.5  # 目标误差距离
+# 序列观测长度
 TIME_STEP = 4
 
 
@@ -102,8 +105,8 @@ class DynamicPathPlanning(gym.Env):
     >>> u = [nx, μ]
     """
 
-    def __init__(self, max_episode_steps=200, dt=0.5, old_gym_style=True):
-        """最大回合步数, 决策周期, 是否采用老版接口
+    def __init__(self, max_episode_steps=200, dt=0.5, normalize_observation=True, old_gym_style=True):
+        """最大回合步数, 决策周期, 是否输出归一化的观测, 是否采用老版接口
         """
         # 仿真
         self.dt = dt
@@ -125,6 +128,7 @@ class DynamicPathPlanning(gym.Env):
         self.deque_vector = deque(maxlen=TIME_STEP)
         # 环境控制
         self.__need_reset = True
+        self.__norm_observation = normalize_observation
         self.__old_gym = old_gym_style
 
     def reset(self, mode=0):
@@ -134,7 +138,7 @@ class DynamicPathPlanning(gym.Env):
         """
         self.__need_reset = False
         self.time_step = 0
-        # 初始化状态
+        # 初始化航程/状态/控制
         while 1:
             self.state = self.state_space.sample()
             if mode == 0:
@@ -150,29 +154,30 @@ class DynamicPathPlanning(gym.Env):
                     break
             else:
                 break
+        self.L = 0.0                                                         # 航程
+        self.ctrl = np.zeros_like(self.action_space.shape, dtype=np.float32) # 初始控制量
         # 初始化观测
         self.deque_points.extend([np.array([-1]*SCAN_NUM, dtype=np.float32)]*(TIME_STEP-1)) # 初始化到 -1
         self.deque_vector.extend([np.array(OBS_STATE_LOW, dtype=np.float32)]*(TIME_STEP-1)) # 初始化到 low
-        obs = self.get_obs(self.state)
+        obs = self._get_obs(self.state)
         # 初始化记忆
-        self.u_last = np.zeros_like(self.action_space.shape, dtype=np.float32) # 上一时刻唱跳rap篮球
+        self.exist_last = None # 上一时刻中心区域是否存在障碍
         self.D_init = deepcopy(obs['seq_vector'][-1][0]) # 初始到目标距离
         self.D_last = deepcopy(obs['seq_vector'][-1][0]) # 上一时刻到目标距离
-        self.L = 0.0 # 已走航程
         # 重置log
         self.log = Logger()
         self.log.start_pos = self.start_pos       # 起点
         self.log.end_pos = self.end_pos           # 目标
         self.log.path = [self.start_pos]          # 路径
-        self.log.ctrl = [self.u_last]             # 控制
+        self.log.ctrl = [self.ctrl]               # 控制
         self.log.speed = [self.state[2]]          # 速度
         self.log.length = [[self.L, self.D_last]] # 航程+距离
         # 输出
         if self.__old_gym:
-            return self.norm_obs(obs)
-        return self.norm_obs(obs), {}
+            return self._norm_obs(obs)
+        return self._norm_obs(obs), {}
     
-    def get_ctrl(self, act, tau=0.9):
+    def _get_ctrl(self, act, tau=0.9):
         """获取控制"""
         lb = self.control_space.low
         ub = self.control_space.high
@@ -180,10 +185,10 @@ class DynamicPathPlanning(gym.Env):
         u = np.clip(u, lb, ub) # NOTE 浮点数误差有时会出现类似 1.0000001 情况
         # smooth control signal
         if tau is not None:
-            return (1.0 - tau) * self.u_last + tau * u
+            return (1.0 - tau) * self.ctrl + tau * u
         return u
 
-    def get_obs(self, state):
+    def _get_obs(self, state):
         """获取原始观测"""
         x, z, V, ψ = state
         # 相对状态
@@ -201,10 +206,73 @@ class DynamicPathPlanning(gym.Env):
         return {'seq_points': np.array(self.deque_points),
                 'seq_vector': np.array(self.deque_vector)}
     
-    def get_rew(self, obs):
-        """获取奖励 (输入原始观测)"""
-        pass
-    
+    def _get_rew(self):
+        """获取奖励"""
+        rew = -0.01
+        # 1.主动避障奖励 [-2, 2]
+        point0 = self.deque_points[-2] # 0 上一时刻
+        center0 = point0[SCAN_CEN:-SCAN_CEN]
+        point1 = self.deque_points[-1] # 1 当前时刻
+        center1 = point1[SCAN_CEN:-SCAN_CEN]
+        # 中心区域center障碍变化程度
+        if self.exist_last is None:
+            self.exist_last = np.any(center0>-0.5)
+        exist = np.any(center1>-0.5)
+        if exist:
+            # 一直有障碍：看距离变化
+            if self.exist_last:
+                effective_center0, effective_center1 = center0[center0>-0.5], center1[center1>-0.5] # 不可能是空数组
+                d0_mean = np.mean(effective_center0) + 1e-8 # 平均距离 (障碍整体远离程度)
+                d1_mean = np.mean(effective_center1) + 1e-8
+                d0_min = min(effective_center0) # 最小距离 (是否远离障碍物)
+                d1_min = min(effective_center1)
+                rew += np.clip(d1_mean/d0_mean, 0.2, 2) if d1_min > d0_min else -np.clip(d0_mean/d1_mean, 0.2, 2)
+            # 无障碍 -> 有障碍
+            else:
+                rew -= 0.5
+        else:
+            # 有障碍 -> 无障碍 
+            if self.exist_last:
+                rew += 1.0
+            # 一直无障碍, r += 0
+            pass
+        # 2.被动避障奖励 [-1, 0]
+        d_min = min(point1[point1>-0.5])
+        if d_min <= D_BUFF:
+            rew += d_min/D_BUFF - 1 # -1~0
+        # 3.接近目标奖励 {-0.7, 0.5}
+        D = self.deque_vector[-1][0]
+        rew += 0.5 if D < self.D_last else -0.7
+        # 4.速度保持奖励 [-1, 0]
+        V = self.deque_vector[-1][1]
+        if V < V_MIN:
+            rew += (V - V_MIN) / (V_MIN - V_LOW) # -1~0
+        elif V > V_MAX:
+            rew += (V - V_MAX) / (V_MAX - V_HIGH) # 0~-1
+        # 5.视线角奖励 [-1, 1]
+        q = self.deque_vector[-1][2]
+        rew += math.sin(q) # 1~-1
+        # 6.任务奖励
+        done = False
+        info = {'state': 'none'}
+        if d_min < D_SAFE: # 碰撞
+            rew -= 150
+            done = True
+            info['state'] = 'fail'
+        elif D < D_ERR: # 成功
+            η = np.nanmax([3.5 - 2.5*self.L/(self.D_init+1e-8), 0.5]) # 航程折扣 (实现路径最短)
+            # NOTE max返回nan, 输入为*args; np.nanmax返回除了nan的max, 输入为list
+            rew += 200 * η # 100~700+
+            done = True
+            info['state'] = 'sucess'
+        if V < V_MIN or V > V_MAX or d_min < D_BUFF:
+            rew -= 5
+        # 更新记忆
+        self.exist_last = deepcopy(exist)
+        self.D_last = deepcopy(D)
+        # 输出
+        return rew, done, info
+
     def step(self, act: np.ndarray, tau: float = None):
         """状态转移
         Args:
@@ -214,7 +282,7 @@ class DynamicPathPlanning(gym.Env):
         assert not self.__need_reset, "调用step前必须先reset"
         # 数值鸡分
         self.time_step += 1
-        u = self.get_ctrl(act, tau)
+        u = self._get_ctrl(act, tau)
         new_state = self._ode45(self.state, u, self.dt)
         truncated = False
         if self.time_step >= self.max_episode_steps:
@@ -224,9 +292,13 @@ class DynamicPathPlanning(gym.Env):
             or new_state[0] < self.state_space.low[0] \
             or new_state[1] < self.state_space.low[1]:
                 truncated = True
+        # 更新航程/状态/唱跳rap篮球
+        self.L += np.linalg.norm(new_state[:2] - self.state[:2])
+        self.state = deepcopy(new_state)
+        self.ctrl = deepcopy(u)
         # 获取转移元组
-        obs = self.get_obs(new_state)
-        rew, done, info = self.get_rew(obs)
+        obs = self._get_obs(new_state)
+        rew, done, info = self._get_rew(obs)
         info["done"] = done
         info["truncated"] = truncated
         if truncated or done:
@@ -234,23 +306,20 @@ class DynamicPathPlanning(gym.Env):
             self.__need_reset = True
         else:
             info["terminal"] = False
-        # 更新记忆
-        self.u_last = deepcopy(u)
-        self.D_last = deepcopy(obs['seq_vector'][-1][0])
-        self.L += np.linalg.norm(new_state[:2] - self.state[:2])
-        self.state = deepcopy(new_state)
         # 记录
         self.log.path.append(self.state[:2])
-        self.log.ctrl.append(self.u_last)
+        self.log.ctrl.append(self.ctrl)
         self.log.speed.append(self.state[2])
         self.log.length.append([self.L, self.D_last])
         # 输出
         if self.__old_gym:
-            return self.norm_obs(obs), rew, done, info
-        return self.norm_obs(obs), rew, done, truncated, info
+            return self._norm_obs(obs), rew, done, info
+        return self._norm_obs(obs), rew, done, truncated, info
     
-    def norm_obs(self, obs):
+    def _norm_obs(self, obs):
         """归一化观测"""
+        if not self.__norm_observation:
+            return obs
         obs['seq_vector'] = self._linear_mapping(
             obs['seq_vector'], 
             self.observation_space['seq_vector'].low, 
@@ -258,7 +327,7 @@ class DynamicPathPlanning(gym.Env):
         )
         obs['seq_points'] = self._normalize_points(obs['seq_points'])
         return obs
-
+    
     def render(self, mode="human"):
         """可视化环境, 和step交替调用"""
         assert not self.__need_reset, "调用render前必须先reset"
@@ -273,14 +342,6 @@ class DynamicPathPlanning(gym.Env):
         """关闭环境"""
         self.__need_reset = True
         plt.close()
-
-    @staticmethod
-    def _normalize_points(points, max_range=SCAN_RANGE):
-        """归一化雷达测距 (无效数据变成0, 有效数据0.1~1)"""
-        points = np.array(points)
-        points[points>-0.5] = 0.9*points[points>-0.5]/max_range + 0.1
-        points[points<-0.5] = 0.0
-        return points
     
     @staticmethod
     def _limit_angle(x, domain=1):
@@ -295,6 +356,14 @@ class DynamicPathPlanning(gym.Env):
         """x 线性变换: [x_min, x_max] -> [left, right]"""
         y = left + (right - left) / (x_max - x_min) * (x - x_min)
         return y
+    
+    @staticmethod
+    def _normalize_points(points, max_range=SCAN_RANGE):
+        """归一化雷达测距 (无效数据变成0, 有效数据0.1~1)"""
+        points = np.array(points)
+        points[points>-0.5] = 0.9*points[points>-0.5]/max_range + 0.1
+        points[points<-0.5] = 0.0
+        return points
     
     @staticmethod
     def _vector_angle(x_vec, y_vec, EPS=1e-8):
@@ -335,15 +404,6 @@ class DynamicPathPlanning(gym.Env):
         ]
         return dsdt
     
-    @classmethod
-    def _ode45(cls, s_old, u, dt):
-        """微分方程积分"""
-        s_new = odeint(cls._fixed_wing_2d, s_old, (0.0, dt), args=(u, )) # shape=(len(t), len(s))
-        x, z, V, ψ = s_new[-1]
-        V = np.clip(V, V_LOW, V_HIGH)
-        ψ = cls._limit_angle(ψ)
-        return np.array([x, z, V, ψ], dtype=np.float32) # deepcopy
-    
     # @staticmethod
     # def _fixed_wing_3d(s, t, u):
     #     """东天南坐标系空间运动ode模型
@@ -365,6 +425,15 @@ class DynamicPathPlanning(gym.Env):
     #         dψdt
     #     ]
     #     return dsdt
+
+    @classmethod
+    def _ode45(cls, s_old, u, dt):
+        """微分方程积分"""
+        s_new = odeint(cls._fixed_wing_2d, s_old, (0.0, dt), args=(u, )) # shape=(len(t), len(s))
+        x, z, V, ψ = s_new[-1]
+        V = np.clip(V, V_LOW, V_HIGH)
+        ψ = cls._limit_angle(ψ)
+        return np.array([x, z, V, ψ], dtype=np.float32) # deepcopy
 
     def plot(self, file):
         """绘图输出"""
@@ -423,7 +492,7 @@ class StaticPathPlanning(gym.Env):
         obs = np.clip(self.obs + act, self.observation_space.low, self.observation_space.high)
         self.time_steps += 1
         # 计算奖励
-        rew, done, info = self.get_reward(obs)
+        rew, done, info = self._get_reward(obs)
         # 回合终止
         truncated = self.time_steps >= self.max_episode_steps
         if truncated or done:
@@ -439,7 +508,7 @@ class StaticPathPlanning(gym.Env):
             return obs, rew, done, info
         return obs, rew, done, truncated, info
     
-    def get_reward(self, obs):
+    def _get_reward(self, obs):
         traj = np.array(self.map.start_pos + obs.tolist() + self.map.end_pos) # [x,y,x,y,x,y,...]
         traj = traj.reshape(self.num_pos+2, 2) # [[x,y],[x,y],...]
         # 惩罚
