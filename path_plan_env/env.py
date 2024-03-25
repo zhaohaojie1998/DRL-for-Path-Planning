@@ -255,7 +255,7 @@ class DynamicPathPlanning(gym.Env):
             # 一直无障碍, r += 0
             pass
         # 2.被动避障奖励 [-1, 0]
-        d_min = min(point1[point1>-0.5])
+        d_min = min([*point1[point1>-0.5], np.inf])
         if d_min <= D_BUFF:
             rew += d_min/D_BUFF - 1 # -1~0
         # 3.接近目标奖励 {-0.7, 0.5}
@@ -352,7 +352,7 @@ class DynamicPathPlanning(gym.Env):
         return obs
     
     def render(self, mode="human", figsize=[8,8]):
-        """可视化环境, 和step交替调用"""
+        """测试时可视化环境, 和step交替调用 (不要和plot一起调用, 容易卡)"""
         assert not self.__need_reset, "调用render前必须先reset"
         # 创建绘图窗口
         if self.__render_not_called:
@@ -395,8 +395,9 @@ class DynamicPathPlanning(gym.Env):
         plt.close("render")
 
     def plot(self, file, figsize=[10,10], dpi=100):
-        """绘图输出"""
+        """训练时观察输出状态 (不要和render一起调用, 容易卡)"""
         file = Path(file).with_suffix(".png")
+        file.parents[0].mkdir(parents=True, exist_ok=True)
         fig = plt.figure("Output", figsize=figsize)
         gs = fig.add_gridspec(2, 2) 
         ax1 = fig.add_subplot(gs[0, 0]) 
@@ -771,10 +772,10 @@ if __name__ == '__main__':
         obs = env.reset()
         while 1:
             try:
-                #env.render()
+                env.render()
                 obs, rew, done, info = env.step(np.array([0.5, 0.2]))
                 print(info)
             except:
                 break
-        env.plot(f"output{ep}")
+        #env.plot(f"output{ep}")
         print(f"episode{ep}: end")
