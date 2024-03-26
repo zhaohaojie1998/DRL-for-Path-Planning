@@ -1,28 +1,24 @@
 # -*- coding: utf-8 -*-
 """
-动态路径规划示例
+动力学路径规划示例 (混合观测)
  Created on Wed Mar 13 2024 18:18:07
  Modified on 2024-3-13 18:18:07
  
  @auther: HJ https://github.com/zhaohaojie1998
 """
 #
-import matplotlib.pyplot as plt
-plt.rcParams['font.sans-serif'] = ['Microsoft YaHei']
-plt.close('all')
 
-
-'''环境实例化'''
+# 1.环境实例化
 from path_plan_env import DynamicPathPlanning
 env = DynamicPathPlanning() # 动作空间本身就是 -1,1
 
 
-'''策略加载'''
+# 2.策略加载
 import onnxruntime as ort
 policy = ort.InferenceSession("./path_plan_env/policy_dynamic.onnx")
 
 
-'''仿真LOOP'''
+# 3.仿真LOOP
 from copy import deepcopy
 
 MAX_EPISODE = 5
