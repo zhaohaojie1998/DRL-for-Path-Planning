@@ -1,28 +1,24 @@
 # -*- coding: utf-8 -*-
 """
-静态路径规划示例
+路径搜索示例 (单观测)
  Created on Wed Mar 13 2024 18:18:07
  Modified on 2024-3-13 18:18:07
  
  @auther: HJ https://github.com/zhaohaojie1998
 """
 #
-import matplotlib.pyplot as plt
-plt.rcParams['font.sans-serif'] = ['Microsoft YaHei']
-plt.close('all')
 
-
-'''环境实例化'''
+# 1.环境实例化
 from path_plan_env import StaticPathPlanning, NormalizedActionsWrapper
 env = NormalizedActionsWrapper(StaticPathPlanning())
 
 
-'''策略加载'''
+# 2.策略加载
 import onnxruntime as ort
 policy = ort.InferenceSession("./path_plan_env/policy_static.onnx")
 
 
-'''仿真LOOP'''
+# 3.仿真LOOP
 from copy import deepcopy
 
 MAX_EPISODE = 20
