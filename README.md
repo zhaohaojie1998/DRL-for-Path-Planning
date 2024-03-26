@@ -4,11 +4,16 @@
 
 ###### 自定义程度高的SAC-Auto算法，支持部署策略模型、备份训练过程、多源观测融合、PER等功能
 
-Soft Actor-Critic Algorithms and Applications （arXiv: 1812) # 不是1801版
+论文：《Soft Actor-Critic Algorithms and Applications （arXiv: 1812) 》# 不是1801版
 
-### 0.SAC_Agent模块
+| 算法构成     | 说明                 |
+| ------------ | -------------------- |
+| rl_typing.py | 强化学习数据类型声明 |
+| sac_agent.py | SAC-Auto算法         |
 
-SAC-Auto算法主模块
+### (0).SAC_Agent模块
+
+###### SAC-Auto算法主模块
 
 ##### 0.初始化接口
 
@@ -53,15 +58,15 @@ agent.buffer_len # 算法属性, 查看当前经验个数, 默认跟随buffer设
 agent.use_per # 算法属性, 查看是否使用PER, 默认跟随buffer设置
 ```
 
-### 1.SAC_Actor模块和SAC_Critic模块
+### (1).SAC_Actor模块和SAC_Critic模块
 
-实现自定义 **观测Encoder** + **策略函数** + **Q函数**
+###### 实现自定义 **观测Encoder** + **策略函数** + **Q函数**
 
 ##### 0.自定义神经网络要求
 
-- 要求**观测Encoder**输入为观测 *batch_obs* 张量，输出形状为(batch, feature_dim)的特征 *batch_feature* 张量。要求forward函数只接受一个位置参数obs，混合观测要求传入的obs为张量字典dict[any, Tensor] / 张量列表list[Tensor] / 张量元组tuple[Tensor, ...]。
-- 要求**策略函数**输入为特征 *batch_feature* 张量，输出形状为(batch, action_dim)的未经tanh激活的均值 *batch_mu* 张量和对数标准差 *batch_logstd* 张量。要求forward函数只接受一个位置参数feature，形状为(batch, feature_dim)。
-- 要求**Q函数**输入为特征 *batch_feature* 张量+动作 *batch_action* 张量，输出形状为(batch, 1)的Q值 *batch_q* 张量。要求forward函数只接受一个位置参数*feature_and_action*，形状为(batch, feature_dim+action_dim)。
+- 要求 **观测Encoder** 输入为观测 *batch_obs* 张量，输出形状为(batch, feature_dim)的特征 *batch_feature* 张量。要求forward函数只接受一个位置参数obs，混合观测要求传入的obs为张量字典dict[any, Tensor] / 张量列表list[Tensor] / 张量元组tuple[Tensor, ...]。
+- 要求 **策略函数** 输入为特征 *batch_feature* 张量，输出形状为(batch, action_dim)的未经tanh激活的均值 *batch_mu* 张量和对数标准差 *batch_logstd* 张量。要求forward函数只接受一个位置参数feature，形状为(batch, feature_dim)。
+- 要求 **Q函数** 输入为特征 *batch_feature* 张量+动作 *batch_action* 张量，输出形状为(batch, 1)的Q值 *batch_q* 张量。要求forward函数只接受一个位置参数 *feature_and_action*，形状为(batch, feature_dim+action_dim)。
 
 ##### 1.自定义神经网络示例
 
@@ -80,7 +85,7 @@ agent.set_nn(
 ) # 为算法设置神经网络
 ```
 
-### 2.BaseBuffer模块
+### (2).BaseBuffer模块
 
 实现自定义经验回放，可自定义存储不同数据类型的混合观测数据（进行一些多传感器数据融合的端到端控制问题求解），也可自定义实现PER等功能。
 
@@ -89,9 +94,9 @@ agent.set_nn(
 | **必须实现的方法**        | **功能**                                                     |
 | ------------------------- | ------------------------------------------------------------ |
 | reset                     | 重置经验池（Off-Policy算法一般用不到），也可用于初始化经验池（生成转移元组collections） |
-| push                      | 经验存储：存入环境转移元组*(s, a, r, s_, done)*，其中状态*s*和下一个状态*s_*（或观测*obs*）为array（或混合形式dict[any, array]、list[array]、tuple[array, ...]），动作*a*为array，奖励*r*为float，*s_*是否存在*done*为bool。 |
-| sample                    | 经验采样：要求返回包含关键字*'s','a','r','s_','done'*的*batch*字典，*batch*的每个key对应value为Tensor（或dict[any, Tensor]、list[Tensor]、tuple[Tensor, ...]）；PER的batch还要包含关键字*'IS_weight'*，对应的value为Tensor。 |
-| state_to_tensor           | 数据升维并转换：将Gym输出的1个*obs*转换成*batch obs*，要求返回Tensor（或混合形式dict[any, Tensor]、list[Tensor]、tuple[Tensor, ...]）。 |
+| push                      | 经验存储：存入环境转移元组 *(s, a, r, s_, done)* ，其中状态 *s* 和下一个状态 *s_* （或观测 *obs* ）为array（或混合形式dict[any, array]、list[array]、tuple[array, ...]），动作 *a* 为array，奖励 *r* 为float， *s_* 是否存在 *done* 为bool。 |
+| sample                    | 经验采样：要求返回包含关键字 *'s','a','r','s_','done'* 的 *batch* 字典， *batch* 的每个key对应value为Tensor（或dict[any, Tensor]、list[Tensor]、tuple[Tensor, ...]）；PER的batch还要包含关键字 *'IS_weight'* ，对应的value为Tensor。 |
+| state_to_tensor           | 数据升维并转换：将Gym输出的1个 *obs* 转换成 *batch obs* ，要求返回Tensor（或混合形式dict[any, Tensor]、list[Tensor]、tuple[Tensor, ...]）。 |
 | **非必须实现的方法/属性** | **功能**                                                     |
 | save                      | 存储buffer数据，用于保存训练进度，可省略                     |
 | load                      | 加载buffer数据，用于加载训练进度，可省略                     |
@@ -100,25 +105,62 @@ agent.set_nn(
 | is_rnn（属性）            | 是否RNN按episode回放，默认False                              |
 | nbytes（属性）            | 用于查看经验池占用内存，默认0                                |
 
-## 一.SAC算法应用示例:
+## 一.路径规划环境SAC应用示例:
 
-### 0.静态路径规划（几何）
+###### 路径规划环境包 path_plan_env
 
-直接找几个点组成路径，学习组成路径的点
+| 包含的模块               | 说明                                                 |
+| ------------------------ | ---------------------------------------------------- |
+| LidarModel               | 激光雷达模拟（基于东北天坐标系）                     |
+| NormalizedActionsWrapper | 环境装饰器：非-1~1动作空间归一化，用于与算法适配     |
+| DynamicPathPlanning      | 动力学路径规划环境（动作空间-1~1，基于东天南坐标系） |
+| StaticPathPlanning       | 路径搜索环境（动作空间非-1~1）                       |
 
-![](图片/Result.png)
+### (0).环境接口
 
-### 1.动态路径规划（运动学）
+###### gym标准接口格式，初始化时可指定使用老版gym接口风格或新版gym接口风格
 
-雷达避障模型
+```python
+# 实例化环境
+from path_plan_env import DynamicPathPlanning
+env = DynamicPathPlanning(kwargs=...)
+# 训练/测试交互
+obs, info = env.reset(kwargs=...) # new gym style
+obs = env.reset(kwargs=...)       # old gym style
+while 1:
+    try:
+        env.render(kwargs=...) # 可视化路径规划(测试)
+        act = np.array([...]) # shape=(act_dim, ) range∈-1~1
+        obs, rew, done, truncated, info = env.step(act, kwargs=...) # new gym style
+        obs, rew, done, info = env.step(act, kwargs=...)            # old gym style
+    except AssertionError:
+        env.plot("fig.png", kwargs=...) # 输出规划结果(训练)
+        break
+```
+
+### (1).路径搜索环境（StaticPathPlanning）
+
+###### 几何层面规划，直接找几个点组成路径，学习组成路径的点
+
+<img src="图片/Result.png" style="zoom:80%;" />
+
+### (2).动力学路径规划环境（DynamicPathPlanning）
+
+###### 动力学层面规划，学习控制量
+
+##### 0.雷达感知模型
 
 <img src="图片/Lidar.gif" style="zoom:200%;" />
 
-运动学仿真，学习控制量
+##### 1.训练结果
 
-（先放张效果图，写完论文过完年再更）
+<img src="图片/amagi1.png" alt="img" style="zoom: 67%;" />
 
-![img](图片/amagi.png)
+<img src="图片/amagi2.png" alt="img" style="zoom: 80%;" />
+
+##### 2.仿真结果
+
+
 
 ## 二.**Requirement**:
 
