@@ -89,7 +89,7 @@ OBS_STATE_HIGH = [1.414*max(STATE_HIGH[0]-STATE_LOW[0], STATE_HIGH[1]-STATE_LOW[
 CTRL_LOW = [-0.02, -0.005] # 切向过载 + 速度滚转角(单位rad/s)
 CTRL_HIGH = [0.02, 0.005]  # 切向过载 + 速度滚转角(单位rad/s)
 # 雷达设置
-SCAN_RANGE = 5   # 扫描距离
+SCAN_RANGE = 2.5 # 扫描距离
 SCAN_ANGLE = 128 # 扫描范围(单位deg)
 SCAN_NUM = 128   # 扫描点个数
 SCAN_CEN = 48    # 中心区域index开始位置(小于SCAN_NUM/2)
@@ -110,10 +110,10 @@ class DynamicPathPlanning(gym.Env):
     >>> u = [nx, μ]
     """
 
-    def __init__(self, max_episode_steps=200, dt=0.5, normalize_observation=True, old_gym_style=True):
+    def __init__(self, max_episode_steps=500, dt=0.5, normalize_observation=True, old_gym_style=True):
         """
         Args:
-            max_episode_steps (int): 最大仿真步数. 默认200.
+            max_episode_steps (int): 最大仿真步数. 默认500.
             dt (float): 决策周期. 默认0.5.
             normalize_observation (bool): 是否输出归一化的观测. 默认True.
             old_gym_style (bool): 是否采用老版gym接口. 默认True.
@@ -167,6 +167,7 @@ class DynamicPathPlanning(gym.Env):
             for o in self.obstacles:
                 if o.contains(geo.Point(*self.start_pos)) \
                 or o.contains(geo.Point(*self.end_pos)):
+                    if mode != 0: raise ValueError("地图的初始/目标位置不能设置在障碍里面!!!")
                     break
             else:
                 break
@@ -221,8 +222,8 @@ class DynamicPathPlanning(gym.Env):
         # NOTE 东北天坐标系(LidarModel) 和 东天南坐标系(ControlModel) 航迹偏角ψ 的数值是相反的
         self.deque_points.append(points[1]) # 只需要测距维度
         # 观测空间
-        return {'seq_points': np.array(self.deque_points),
-                'seq_vector': np.array(self.deque_vector)}
+        return {'seq_points': np.array(self.deque_points, np.float32),
+                'seq_vector': np.array(self.deque_vector, np.float32)}
     
     def _get_rew(self):
         """获取奖励"""
@@ -258,9 +259,9 @@ class DynamicPathPlanning(gym.Env):
         d_min = min([*point1[point1>-0.5], np.inf])
         if d_min <= D_BUFF:
             rew += d_min/D_BUFF - 1 # -1~0
-        # 3.接近目标奖励 {-0.7, 0.5}
+        # 3.接近目标奖励 {-1.5, 2.0}
         D = self.deque_vector[-1][0]
-        rew += 0.5 if D < self.D_last else -0.7
+        rew += 2.0 if D < self.D_last else -1.5
         # 4.速度保持奖励 [-1, 0]
         V = self.deque_vector[-1][1]
         if V < V_MIN:
@@ -279,7 +280,7 @@ class DynamicPathPlanning(gym.Env):
             info['state'] = 'fail'
         elif D < D_ERR: # 成功
             η = np.nanmax([3.5 - 2.5*self.L/(self.D_init+1e-8), 0.5]) # 航程折扣 (实现路径最短)
-            # NOTE max返回nan, 输入为*args; np.nanmax返回除了nan的max, 输入为list
+            # NOTE max返回nan, 输入为*args或ListLike; np.nanmax返回除了nan的max, 输入只能为ListLike
             rew += 200 * η # 100~700+
             done = True
             info['state'] = 'sucess'
@@ -304,12 +305,14 @@ class DynamicPathPlanning(gym.Env):
         new_state = self._ode45(self.state, u, self.dt)
         truncated = False
         if self.time_step >= self.max_episode_steps:
-                truncated = True
-        elif new_state[0] > self.state_space.high[0] \
-            or new_state[1] > self.state_space.high[1] \
-            or new_state[0] < self.state_space.low[0] \
-            or new_state[1] < self.state_space.low[1]:
-                truncated = True
+            truncated = True
+        # elif new_state[0] > self.state_space.high[0] \
+        #     or new_state[1] > self.state_space.high[1] \
+        #     or new_state[0] < self.state_space.low[0] \
+        #     or new_state[1] < self.state_space.low[1]:
+        #         truncated = True
+        elif self.D_last > self.observation_space["seq_vector"].high[-1][0]:
+            truncated = True
         # 更新航程/状态/唱跳rap篮球
         self.L += np.linalg.norm(new_state[:2] - self.state[:2])
         self.state = deepcopy(new_state)
@@ -378,6 +381,8 @@ class DynamicPathPlanning(gym.Env):
         if self.log.curr_scan_pos:
             points = np.array(self.log.curr_scan_pos)
             self.__plt_lidar_scan.set_data(points[:, 0], points[:, 1])
+        else:
+            self.__plt_lidar_scan.set_data([], [])
         x, y, yaw = *self.log.path[-1], self.log.yaw[-1]
         x1 = x + self.lidar.max_range * np.cos(-yaw + np.deg2rad(self.lidar.scan_angle/2))
         x2 = x + self.lidar.max_range * np.cos(-yaw - np.deg2rad(self.lidar.scan_angle/2))
@@ -722,6 +727,10 @@ class StaticPathPlanning(gym.Env):
         self.__need_reset = True
         plt.close()
 
+    def plot(self, *args, **kwargs):
+        """输出"""
+        print("你干嘛")
+
 
 
 
@@ -766,7 +775,6 @@ class NormalizedActionsWrapper(gym.ActionWrapper):
 if __name__ == '__main__':
     # MAP.show()
     env = DynamicPathPlanning()
-    terminal = False
     for ep in range(10):
         print(f"episode{ep}: begin")
         obs = env.reset()
@@ -775,7 +783,7 @@ if __name__ == '__main__':
                 env.render()
                 obs, rew, done, info = env.step(np.array([0.5, 0.2]))
                 print(info)
-            except:
+            except AssertionError:
                 break
         #env.plot(f"output{ep}")
         print(f"episode{ep}: end")
