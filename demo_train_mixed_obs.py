@@ -203,10 +203,10 @@ agent.cuda()
 
 '''训练LOOP'''
 from torch.utils.tensorboard import SummaryWriter # TensorBoard, 启动!!!
-log = SummaryWriter(log_dir = "./tensorboard_log") 
+log = SummaryWriter(log_dir = "./tb_log") 
 
 MAX_EPISODE = 50000
-LEARN_FREQ = 10
+LEARN_FREQ = 100
 OUTPUT_FREQ = 50
 for episode in range(MAX_EPISODE):
     ## 重置回合奖励
