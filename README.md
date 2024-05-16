@@ -97,7 +97,7 @@ agent.set_nn(
 |              push              | 经验存储：存入环境转移元组*(s, a, r, s_, done)* ，其中状态*s* 和下一个状态 *s_* （或观测 *obs* ）为array（或混合形式dict[any, array]、list[array]、tuple[array, ...]），动作 *a* 为array，奖励 *r* 为float， *s_* 是否存在 *done* 为bool。 |
 |             sample             | 经验采样：要求返回包含关键字*'s','a','r','s_','done'* 的*batch* 字典， *batch* 的每个key对应value为Tensor（或dict[any, Tensor]、list[Tensor]、tuple[Tensor, ...]）；PER的batch还要包含关键字 *'IS_weight'* ，对应的value为Tensor。                 |
 |         state_to_tensor         | 数据升维并转换：将Gym输出的1个*obs* 转换成 *batch obs* ，要求返回Tensor（或混合形式dict[any, Tensor]、list[Tensor]、tuple[Tensor, ...]）。                                                                                                           |
-| **非必须实现的方法/属性** | **功能**                                                                                                                                                                                                                                                |
+| **非必须实现的方法/属性** | **功能**                                                                                                                                                                                                                                           |
 |              save              | 存储buffer数据，用于保存训练进度，可省略                                                                                                                                                                                                                 |
 |              load              | 加载buffer数据，用于加载训练进度，可省略                                                                                                                                                                                                                 |
 |        update_priorities        | 用于更新PER的优先级，非PER可省略                                                                                                                                                                                                                         |
@@ -145,7 +145,7 @@ while 1:
 ##### 0.转移模型
 
 $$
-\mathbf{s} _{new} \gets \mathbf{s} _{old}+\mathbf{a}
+\mathbf{s}_{new} \gets \mathbf{s}_{old} + \mathbf{a}
 $$
 
 ##### 1.观测空间&动作空间
@@ -153,7 +153,7 @@ $$
 1.0观测空间（BoxSpace）:
 
 $$
-\mathbf{s} =\mathbf{o} \subset Box\left\{ x_{0},y_{0},\dots x_{n-1},y_{n-1}  \right\}
+\mathbf{s} = \mathbf{o} \subset Box \left \{ x_{0},y_{0},\dots x_{n-1},y_{n-1}  \right \}
 $$
 
 | 观测空间             | n=6                            |
@@ -167,7 +167,7 @@ $$
 1.1动作空间（BoxSpace）:
 
 $$
-\mathbf{a} \subset  Box\left\{dx_{0},dy_{0},\dots dx_{n-1},dy_{n-1}  \right\}
+\mathbf{a} \subset  Box \left \{ dx_{0},dy_{0},\dots dx_{n-1},dy_{n-1}  \right \}
 $$
 
 | 动作空间             | n=6                                        |
@@ -221,7 +221,7 @@ $$
 状态空间（BoxSpace）：
 
 $$
-\mathbf{s} \subset Box\left \{  x,z,V,\psi \right \}
+\mathbf{s} \subset Box \left \{  x,z,V,\psi \right \}
 $$
 
 $$
@@ -231,7 +231,7 @@ $$
 控制空间（BoxSpace）：
 
 $$
-\mathbf{u} \subset Box\left \{ n_{x},\mu  \right \}
+\mathbf{u} \subset Box \left \{ n_{x},\mu  \right \}
 $$
 
 $$
@@ -248,7 +248,6 @@ $$
 
 $$
 \mathbf{o} \subset Dict\left \{ \mathbf{vector} _{t-N+1:t}:Box\left \{ D,V,q \right \}, \mathbf{points}_{t-N+1:t}:Box\left \{ d_0,d_1,\dots ,d_{n-1} \right \}  \right \}
-
 $$
 
 D为距离、V为速度、q为视线角、points为雷达测距
@@ -260,7 +259,7 @@ D为距离、V为速度、q为视线角、points为雷达测距
 | 数据结构                     | shape = (N, 3); dtype = float32      |
 | low                          | [ [0, V_low, -pi] ] * N              |
 | high                         | [ [1.414*map_size, V_high, pi] ] * N |
-| **时序points观测空间** | **N=4，n=128**                      |
+| **时序points观测空间** | **N=4，n=128**                       |
 | 空间名（onnx输入名）         | “seq_points"                        |
 | 空间类型                     | Box                                  |
 | 数据结构                     | shape = (N, n) ; dtype = float32     |
