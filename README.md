@@ -153,7 +153,7 @@ $$
 1.0观测空间（BoxSpace）:
 
 $$
-\mathbf{s} = \mathbf{o} \subset Box \left \{ x_{0},y_{0},\dots x_{n-1},y_{n-1}  \right \}
+\mathbf{s} = \mathbf{o} \subset \text{Box} \left \{ x_{0},y_{0},\dots x_{n-1},y_{n-1}  \right \}
 $$
 
 | 观测空间             | n=6                            |
@@ -167,7 +167,7 @@ $$
 1.1动作空间（BoxSpace）:
 
 $$
-\mathbf{a} \subset  Box \left \{ dx_{0},dy_{0},\dots dx_{n-1},dy_{n-1}  \right \}
+\mathbf{a} \subset \text{Box} \left \{ dx_{0},dy_{0},\dots dx_{n-1},dy_{n-1}  \right \}
 $$
 
 | 动作空间             | n=6                                        |
@@ -221,7 +221,7 @@ $$
 状态空间（BoxSpace）：
 
 $$
-\mathbf{s} \subset Box \left \{  x,z,V,\psi \right \}
+\mathbf{s} \subset \text{Box} \left \{  x,z,V,\psi \right \}
 $$
 
 $$
@@ -231,7 +231,7 @@ $$
 控制空间（BoxSpace）：
 
 $$
-\mathbf{u} \subset Box \left \{ n_{x},\mu  \right \}
+\mathbf{u} \subset \text{Box} \left \{ n_{x},\mu  \right \}
 $$
 
 $$
@@ -247,7 +247,7 @@ $$
 2.0观测空间（DictSpace）：
 
 $$
-\mathbf{o} \subset Dict\left \{ \mathbf{vector} _{t-N+1:t}:Box\left \{ D,V,q \right \}, \mathbf{points}_{t-N+1:t}:Box\left \{ d_0,d_1,\dots ,d_{n-1} \right \}  \right \}
+\mathbf{o} \subset \text{Dict}\left \{ \mathbf{vector} _{t-N+1:t}:\text{Box}\left \{ D,V,q \right \}, \mathbf{points}_{t-N+1:t}:\text{Box}\left \{ d_0,d_1,\dots ,d_{n-1} \right \}  \right \}
 $$
 
 D为距离、V为速度、q为视线角、points为雷达测距
@@ -269,7 +269,7 @@ D为距离、V为速度、q为视线角、points为雷达测距
 2.1动作空间（BoxSpace）：
 
 $$
-\mathbf{a} \subset Box\left \{ a_0,a_1 \right \}
+\mathbf{a} \subset \text{Box} \left \{ a_0,a_1 \right \}
 $$
 
 | 动作空间             |                                |
