@@ -1,4 +1,4 @@
-# PyTorch版SAC-Auto强化学习模块
+# PyTorch版SAC-Auto强化学习算法与应用示例
 
 ## 零.SAC-Auto算法:
 
@@ -140,7 +140,43 @@ while 1:
 
 ### (1).路径搜索环境（StaticPathPlanning）
 
-###### 几何层面规划，直接找几个点组成路径，学习组成路径的点
+###### 几何层面规划，直接找n个点组成路径，学习组成路径的点
+
+##### 0.转移模型
+
+$$
+\mathbf{s} _{new} \gets \mathbf{s} _{old}+\mathbf{a}
+$$
+
+##### 1.观测空间&动作空间
+
+1.0观测空间（BoxSpace）:
+$$
+\mathbf{s} =\mathbf{o} \subset Box\left\{ x_{0},y_{0},\dots x_{n-1},y_{n-1}  \right\}
+$$
+
+| 观测空间             | n=6                            |
+| -------------------- | ------------------------------ |
+| 空间名（onnx输入名） | ”observation“                  |
+| 空间类型             | Box                            |
+| 数据结构             | shape = (n, ); dtype = float32 |
+| low                  | [x_min, y_min] * n             |
+| high                 | [x_max, y_max] * n             |
+
+1.1动作空间（BoxSpace）:
+$$
+\mathbf{a} \subset  Box\left\{dx_{0},dy_{0},\dots dx_{n-1},dy_{n-1}  \right\}
+$$
+
+| 动作空间             | n=6                                        |
+| -------------------- | ------------------------------------------ |
+| 空间名（onnx输出名） | ”action“                                   |
+| 空间类型             | Box                                        |
+| 数据结构             | shape = (n, ); dtype = float32             |
+| low                  | [-(x_max-x_min)/10, -(y_max-y_min)/10] * n |
+| high                 | [+(x_max-x_min)/10, +(y_max-y_min)/10] * n |
+
+##### 2.仿真结果
 
 <img src="图片/Result.png" style="zoom:80%;" />
 
@@ -152,13 +188,94 @@ while 1:
 
 <img src="图片/Lidar.gif" style="zoom:200%;" />
 
-##### 1.训练结果
+发射n条射线，雷达测距数据结构：
+$$
+\mathbf{points} = \left [ d_0,d_1,\dots ,d_{n-1} \right ]
+$$
+
+$$
+\begin{cases}
+ d_{i}\in \left [ 0,d_{max} \right ]  & \text{ if } d_{i,real}\le d_{max} \\
+ d_{i}=-1 & \text{ if } d_{i,real}> d_{max}
+\end{cases}
+$$
+
+##### 1.转移模型（东天南坐标系）
+
+动力学模型：
+$$
+\left\{\begin{array}{l}
+\frac{d x}{d t}=V \cos \theta \cos \psi \\
+\frac{d y}{d t}=V \sin \theta \equiv 0\\
+\frac{d z}{d t}=-V \cos \theta \sin \psi \\
+\frac{d V}{d t}=g\left(n_{x}-\sin \theta\right) \\
+\frac{d \theta}{d t}=\frac{g}{V}\left(n_{y} \cos \mu-\cos \theta\right)\equiv 0 \\
+\frac{d \psi}{d t}=-\frac{g n_{y} \sin \mu}{V \cos \theta}
+\end{array}\right.
+$$
+状态空间（BoxSpace）：
+$$
+\mathbf{s} \subset Box\left \{  x,z,V,\psi \right \}
+$$
+
+$$
+V \in \left [ 0.05,0.2 \right ]
+$$
+
+控制空间（BoxSpace）：
+$$
+\mathbf{u} \subset Box\left \{ n_{x},\mu  \right \}
+$$
+
+$$
+n_{x}\in \left [ -0.02,0.02 \right ]
+$$
+
+$$
+\mu \in \left [ -0.005,0.005 \right ]
+$$
+
+##### 2.观测空间&动作空间
+
+2.0观测空间（DictSpace）：
+$$
+\mathbf{o} \subset Dict\left \{ \mathbf{vector} _{t-N+1:t}:Box\left \{ D,V,q \right \}, \mathbf{points}_{t-N+1:t}:Box\left \{ d_0,d_1,\dots ,d_{n-1} \right \}  \right \}
+$$
+
+| 时序vector观测空间     | N=4                                  |
+| ---------------------- | ------------------------------------ |
+| 空间名（onnx输入名）   | ”seq_vector"                         |
+| 空间类型               | Box                                  |
+| 数据结构               | shape = (N, 3); dtype = float32      |
+| low                    | [ [0, V_low, -pi] ] * N              |
+| high                   | [ [1.414*map_size, V_high, pi] ] * N |
+| **时序points观测空间** | **N=4，n=128**                       |
+| 空间名（onnx输入名）   | “seq_points"                         |
+| 空间类型               | Box                                  |
+| 数据结构               | shape = (N, n) ; dtype = float32     |
+| low                    | [ [-1] * n ] * N                     |
+| high                   | [ [d_max] * n ] * N                  |
+
+2.1动作空间（BoxSpace）：
+$$
+\mathbf{a} \subset Box\left \{ a_0,a_1 \right \}
+$$
+
+| 动作空间             |                                |
+| -------------------- | ------------------------------ |
+| 空间名（onnx输出名） | "action"                       |
+| 空间类型             | Box                            |
+| 数据结构             | shape = (2, ); dtype = float32 |
+| low                  | [-1, -1]                       |
+| high                 | [1, 1]                         |
+
+##### 3.训练结果
 
 <img src="图片/amagi1.png" alt="img" style="zoom: 67%;" />
 
 <img src="图片/amagi2.png" alt="img" style="zoom: 80%;" />
 
-##### 2.仿真结果
+##### 4.仿真结果
 
 <img src="图片/Result.gif" style="zoom: 50%;" />
 
