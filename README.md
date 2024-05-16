@@ -91,19 +91,19 @@ agent.set_nn(
 
 要求在派生类中实现以下抽象方法（输入参数和返回数据的格式参考DocString)，可参考demo_train.py中派生类实现方法：
 
-| **必须实现的方法**        | **功能**                                                     |
-| ------------------------- | ------------------------------------------------------------ |
-| reset                     | 重置经验池（Off-Policy算法一般用不到），也可用于初始化经验池（生成转移元组collections） |
-| push                      | 经验存储：存入环境转移元组 *(s, a, r, s_, done)* ，其中状态 *s* 和下一个状态 *s_* （或观测 *obs* ）为array（或混合形式dict[any, array]、list[array]、tuple[array, ...]），动作 *a* 为array，奖励 *r* 为float， *s_* 是否存在 *done* 为bool。 |
-| sample                    | 经验采样：要求返回包含关键字 *'s','a','r','s_','done'* 的 *batch* 字典， *batch* 的每个key对应value为Tensor（或dict[any, Tensor]、list[Tensor]、tuple[Tensor, ...]）；PER的batch还要包含关键字 *'IS_weight'* ，对应的value为Tensor。 |
-| state_to_tensor           | 数据升维并转换：将Gym输出的1个 *obs* 转换成 *batch obs* ，要求返回Tensor（或混合形式dict[any, Tensor]、list[Tensor]、tuple[Tensor, ...]）。 |
-| **非必须实现的方法/属性** | **功能**                                                     |
-| save                      | 存储buffer数据，用于保存训练进度，可省略                     |
-| load                      | 加载buffer数据，用于加载训练进度，可省略                     |
-| update_priorities         | 用于更新PER的优先级，非PER可省略                             |
-| is_per（属性）            | 是否是PER回放，默认False                                     |
-| is_rnn（属性）            | 是否RNN按episode回放，默认False                              |
-| nbytes（属性）            | 用于查看经验池占用内存，默认0                                |
+|    **必须实现的方法**    | **功能**                                                                                                                                                                                                                                           |
+| :-----------------------------: | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|              reset              | 重置经验池（Off-Policy算法一般用不到），也可用于初始化经验池（生成转移元组collections）                                                                                                                                                                  |
+|              push              | 经验存储：存入环境转移元组*(s, a, r, s_, done)* ，其中状态*s* 和下一个状态 *s_* （或观测 *obs* ）为array（或混合形式dict[any, array]、list[array]、tuple[array, ...]），动作 *a* 为array，奖励 *r* 为float， *s_* 是否存在 *done* 为bool。 |
+|             sample             | 经验采样：要求返回包含关键字*'s','a','r','s_','done'* 的*batch* 字典， *batch* 的每个key对应value为Tensor（或dict[any, Tensor]、list[Tensor]、tuple[Tensor, ...]）；PER的batch还要包含关键字 *'IS_weight'* ，对应的value为Tensor。                 |
+|         state_to_tensor         | 数据升维并转换：将Gym输出的1个*obs* 转换成 *batch obs* ，要求返回Tensor（或混合形式dict[any, Tensor]、list[Tensor]、tuple[Tensor, ...]）。                                                                                                           |
+| **非必须实现的方法/属性** | **功能**                                                                                                                                                                                                                                                |
+|              save              | 存储buffer数据，用于保存训练进度，可省略                                                                                                                                                                                                                 |
+|              load              | 加载buffer数据，用于加载训练进度，可省略                                                                                                                                                                                                                 |
+|        update_priorities        | 用于更新PER的优先级，非PER可省略                                                                                                                                                                                                                         |
+|         is_per（属性）         | 是否是PER回放，默认False                                                                                                                                                                                                                                 |
+|         is_rnn（属性）         | 是否RNN按episode回放，默认False                                                                                                                                                                                                                          |
+|         nbytes（属性）         | 用于查看经验池占用内存，默认0                                                                                                                                                                                                                            |
 
 ## 一.路径规划环境SAC应用示例:
 
@@ -151,26 +151,28 @@ $$
 ##### 1.观测空间&动作空间
 
 1.0观测空间（BoxSpace）:
+
 $$
 \mathbf{s} =\mathbf{o} \subset Box\left\{ x_{0},y_{0},\dots x_{n-1},y_{n-1}  \right\}
 $$
 
 | 观测空间             | n=6                            |
-| -------------------- | ------------------------------ |
-| 空间名（onnx输入名） | ”observation“                  |
+| :------------------- | :----------------------------- |
+| 空间名（onnx输入名） | ”observation“                |
 | 空间类型             | Box                            |
 | 数据结构             | shape = (n, ); dtype = float32 |
 | low                  | [x_min, y_min] * n             |
 | high                 | [x_max, y_max] * n             |
 
 1.1动作空间（BoxSpace）:
+
 $$
 \mathbf{a} \subset  Box\left\{dx_{0},dy_{0},\dots dx_{n-1},dy_{n-1}  \right\}
 $$
 
 | 动作空间             | n=6                                        |
-| -------------------- | ------------------------------------------ |
-| 空间名（onnx输出名） | ”action“                                   |
+| :------------------- | :----------------------------------------- |
+| 空间名（onnx输出名） | ”action“                                 |
 | 空间类型             | Box                                        |
 | 数据结构             | shape = (n, ); dtype = float32             |
 | low                  | [-(x_max-x_min)/10, -(y_max-y_min)/10] * n |
@@ -189,6 +191,7 @@ $$
 <img src="图片/Lidar.gif" style="zoom:200%;" />
 
 发射n条射线，雷达测距数据结构：
+
 $$
 \mathbf{points} = \left [ d_0,d_1,\dots ,d_{n-1} \right ]
 $$
@@ -203,6 +206,7 @@ $$
 ##### 1.转移模型（东天南坐标系）
 
 动力学模型：
+
 $$
 \left\{\begin{array}{l}
 \frac{d x}{d t}=V \cos \theta \cos \psi \\
@@ -213,7 +217,9 @@ $$
 \frac{d \psi}{d t}=-\frac{g n_{y} \sin \mu}{V \cos \theta}
 \end{array}\right.
 $$
+
 状态空间（BoxSpace）：
+
 $$
 \mathbf{s} \subset Box\left \{  x,z,V,\psi \right \}
 $$
@@ -223,6 +229,7 @@ V \in \left [ 0.05,0.2 \right ]
 $$
 
 控制空间（BoxSpace）：
+
 $$
 \mathbf{u} \subset Box\left \{ n_{x},\mu  \right \}
 $$
@@ -238,31 +245,36 @@ $$
 ##### 2.观测空间&动作空间
 
 2.0观测空间（DictSpace）：
+
 $$
 \mathbf{o} \subset Dict\left \{ \mathbf{vector} _{t-N+1:t}:Box\left \{ D,V,q \right \}, \mathbf{points}_{t-N+1:t}:Box\left \{ d_0,d_1,\dots ,d_{n-1} \right \}  \right \}
+
 $$
 
-| 时序vector观测空间     | N=4                                  |
-| ---------------------- | ------------------------------------ |
-| 空间名（onnx输入名）   | ”seq_vector"                         |
-| 空间类型               | Box                                  |
-| 数据结构               | shape = (N, 3); dtype = float32      |
-| low                    | [ [0, V_low, -pi] ] * N              |
-| high                   | [ [1.414*map_size, V_high, pi] ] * N |
-| **时序points观测空间** | **N=4，n=128**                       |
-| 空间名（onnx输入名）   | “seq_points"                         |
-| 空间类型               | Box                                  |
-| 数据结构               | shape = (N, n) ; dtype = float32     |
-| low                    | [ [-1] * n ] * N                     |
-| high                   | [ [d_max] * n ] * N                  |
+D为距离、V为速度、q为视线角、points为雷达测距
+
+| 时序vector观测空间           | N=4                                  |
+| :--------------------------- | :----------------------------------- |
+| 空间名（onnx输入名）         | ”seq_vector"                        |
+| 空间类型                     | Box                                  |
+| 数据结构                     | shape = (N, 3); dtype = float32      |
+| low                          | [ [0, V_low, -pi] ] * N              |
+| high                         | [ [1.414*map_size, V_high, pi] ] * N |
+| **时序points观测空间** | **N=4，n=128**                      |
+| 空间名（onnx输入名）         | “seq_points"                        |
+| 空间类型                     | Box                                  |
+| 数据结构                     | shape = (N, n) ; dtype = float32     |
+| low                          | [ [-1] * n ] * N                     |
+| high                         | [ [d_max] * n ] * N                  |
 
 2.1动作空间（BoxSpace）：
+
 $$
 \mathbf{a} \subset Box\left \{ a_0,a_1 \right \}
 $$
 
 | 动作空间             |                                |
-| -------------------- | ------------------------------ |
+| :------------------- | ------------------------------ |
 | 空间名（onnx输出名） | "action"                       |
 | 空间类型             | Box                            |
 | 数据结构             | shape = (2, ); dtype = float32 |
