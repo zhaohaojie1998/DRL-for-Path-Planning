@@ -201,10 +201,10 @@ class Buffer(BaseBuffer):
 	idxs = idxs or np.random.choice(self.curr_size, size=batch_size, replace=False)
 	# get data
 	batch = {
-	    "s": self.data[idxs] # device: self.device; shape: (batch_size, ...); type: FloatTensor / tuple[FloatTensor,...] / list[FloatTensor] / dict[any, FloatTensor]
+	    "s": self.data[idxs] # device: self.device; shape: (batch_size, ...); type: FloatTensor / tuple[FloatTensor, ...] / list[FloatTensor] / dict[any, FloatTensor]
             "a": ...             # device: self.device; shape: (batch_size, act_dim(TD3/SAC/PPO) / 1(DQN/DSAC/DPPO)); type: FloatTensor(TD3/SAC/PPO) / LongTensor(DQN/DSAC/DPPO)
             "r": ...             # device: self.device; shape: (batch_size, 1); type: FloatTensor
-            "s_": ...            # device: self.device; shape: (batch_size, ...); type: FloatTensor / tuple[FloatTensor,...] / list[FloatTensor] / dict[any, FloatTensor]
+            "s_": ...            # device: self.device; shape: (batch_size, ...); type: FloatTensor / tuple[FloatTensor, ...] / list[FloatTensor] / dict[any, FloatTensor]
             "done": ...          # device: self.device; shape: (batch_size, 1); type: FloatTensor
 	}
         return batch
