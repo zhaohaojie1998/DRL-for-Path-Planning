@@ -37,7 +37,7 @@ class BaseBuffer:
 
     obs_space: ObsSpace
     act_space: ActSpace
-    device: DeviceLike
+    device: DeviceLike = 'cpu'
 
     # 0.重置
     @abstractmethod
