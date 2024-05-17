@@ -138,24 +138,23 @@ agent.set_nn(
 
 要求在派生类中实现以下抽象方法（输入参数和返回数据的格式参考DocString)，可参考demo_train.py中派生类实现方法：
 
-|  **必须实现的方法**  | **功能**                                                                                                                                                                                                                                           |
-| :------------------------: | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-|           reset           | 重置经验池（Off-Policy算法一般用不到），也可用于初始化经验池（生成转移元组collections）                                                                                                                                                                  |
-|            push            | 经验存储：存入环境转移元组*(s, a, r, s_, done)* ，其中状态*s* 和下一个状态 *s_* （或观测 *obs* ）为array（或混合形式dict[any, array]、list[array]、tuple[array, ...]），动作 *a* 为array，奖励 *r* 为float， *s_* 是否存在 *done* 为bool。 |
-|           sample           | 经验采样：要求返回包含关键字*'s','a','r','s_','done'* 的*batch* 字典， *batch* 的每个key对应value为Tensor（或dict[any, Tensor]、list[Tensor]、tuple[Tensor, ...]）；PER的batch还要包含关键字 *'IS_weight'* ，对应的value为Tensor。                 |
-|      state_to_tensor      | 数据升维并转换：将Gym输出的1个*obs* 转换成 *batch obs* ，要求返回Tensor（或混合形式dict[any, Tensor]、list[Tensor]、tuple[Tensor, ...]）。                                                                                                           |
+|    **必须实现的方法**    | **功能**                                                                                                                                                                                                                                           |
+| :-----------------------------: | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|              reset              | 重置经验池（Off-Policy算法一般用不到），也可用于初始化经验池（生成转移元组collections）                                                                                                                                                                  |
+|              push              | 经验存储：存入环境转移元组*(s, a, r, s_, done)* ，其中状态*s* 和下一个状态 *s_* （或观测 *obs* ）为array（或混合形式dict[any, array]、list[array]、tuple[array, ...]），动作 *a* 为array，奖励 *r* 为float， *s_* 是否存在 *done* 为bool。 |
+|             sample             | 经验采样：要求返回包含关键字*'s','a','r','s_','done'* 的*batch* 字典， *batch* 的每个key对应value为Tensor（或dict[any, Tensor]、list[Tensor]、tuple[Tensor, ...]）；PER的batch还要包含关键字 *'IS_weight'* ，对应的value为Tensor。                 |
+|         state_to_tensor         | 数据升维并转换：将Gym输出的1个*obs* 转换成 *batch obs* ，要求返回Tensor（或混合形式dict[any, Tensor]、list[Tensor]、tuple[Tensor, ...]）。                                                                                                           |
 | **非必须实现的方法/属性** | **功能**                                                                                                                                                                                                                                           |
-|            save            | 存储buffer数据，用于保存训练进度，可省略                                                                                                                                                                                                                 |
-|            load            | 加载buffer数据，用于加载训练进度，可省略                                                                                                                                                                                                                 |
-|     update_priorities     | 用于更新PER的优先级，非PER可省略                                                                                                                                                                                                                         |
-|       is_per（属性）       | 是否是PER回放，默认False                                                                                                                                                                                                                                 |
-|       is_rnn（属性）       | 是否RNN按episode回放，默认False                                                                                                                                                                                                                          |
-|       nbytes（属性）       | 用于查看经验池占用内存，默认0                                                                                                                                                                                                                            |
+|              save              | 存储buffer数据，用于保存训练进度，可省略                                                                                                                                                                                                                 |
+|              load              | 加载buffer数据，用于加载训练进度，可省略                                                                                                                                                                                                                 |
+|        update_priorities        | 用于更新PER的优先级，非PER可省略                                                                                                                                                                                                                         |
+|         is_per（属性）         | 是否是PER回放，默认False                                                                                                                                                                                                                                 |
+|         is_rnn（属性）         | 是否RNN按episode回放，默认False                                                                                                                                                                                                                          |
+|         nbytes（属性）         | 用于查看经验池占用内存，默认0                                                                                                                                                                                                                            |
 
 ##### 1.自定义Buffer示例
 
 ```python
-
 MAX_SIZE = int(2**20)
 OBS_SPACE = env.observation_space
 ACT_SPACE = env.action_space
@@ -208,6 +207,14 @@ class Buffer(BaseBuffer):
             "done": ...          # device: self.device; shape: (batch_size, 1); type: FloatTensor
 	}
         return batch
+
+    def state_to_tensor(self, state: Obs, use_rnn=False) -> ObsBatch:
+	# Easy Obs
+        return th.FloatTensor(state).unsqueeze(0).to(self.device) # no_rnn: shape = (1, ...); use_rnn: shape = (1, 1, ...) 
+        # Mixed Obs
+        return {k: th.FloatTensor(state[k]).unsqueeze(0).to(self.device) for k in state.keys()}
+        return [th.FloatTensor(state[i]).unsqueeze(0).to(self.device) for i in range(len(state))]
+        return tuple(th.FloatTensor(state[i]).unsqueeze(0).to(self.device) for i in range(len(state)))
 
 # 为算法设置Buffer
 buffer = Buffer(MAX_SIZE, OBS_SPACE, ACT_SPACE) # 实例化buffer模块
@@ -368,7 +375,7 @@ D为距离、V为速度、q为视线角、points为雷达测距
 | 数据结构                     | shape = (N, 3); dtype = float32      |
 | low                          | [ [0, V_low, -pi] ] * N              |
 | high                         | [ [1.414*map_size, V_high, pi] ] * N |
-| **时序points观测空间** | **N=4，n=128**                      |
+| **时序points观测空间** | **N=4，n=128**                       |
 | 空间名（onnx输入名）         | “seq_points"                        |
 | 空间类型                     | Box                                  |
 | 数据结构                     | shape = (N, n) ; dtype = float32     |
