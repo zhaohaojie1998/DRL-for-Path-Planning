@@ -78,7 +78,7 @@ ACTION_DIM = 3
 class MyEncoder(nn.Module):
     def __init__(self):
         super().__init__()
-        self.encoder = ...
+        self.encoder = ... # user encoder: CNN、RNN、Transformer、GNN ... 
         self.mlp = nn.Sequential(
             nn.Linear(..., FEATURE_DIM),
             nn.ReLU(True),
@@ -103,7 +103,7 @@ class MyPolicy(nn.Module):
 
 mu_net, logstd_net = MyPolicy(), MyPolicy()
 
-# 自定义Double Q函数
+# 自定义TwinQ函数
 class MyQfun(nn.Module):
     def __init__(self):
         super().__init__()
@@ -132,6 +132,8 @@ agent.set_nn(
 
 ### (2).BaseBuffer模块
 
+##### 0.自定义Buffer要求
+
 实现自定义经验回放，可自定义存储不同数据类型的混合观测数据（进行一些多传感器数据融合的端到端控制问题求解），也可自定义实现PER等功能。
 
 要求在派生类中实现以下抽象方法（输入参数和返回数据的格式参考DocString)，可参考demo_train.py中派生类实现方法：
@@ -149,6 +151,68 @@ agent.set_nn(
 |       is_per（属性）       | 是否是PER回放，默认False                                                                                                                                                                                                                                 |
 |       is_rnn（属性）       | 是否RNN按episode回放，默认False                                                                                                                                                                                                                          |
 |       nbytes（属性）       | 用于查看经验池占用内存，默认0                                                                                                                                                                                                                            |
+
+##### 1.自定义Buffer示例
+
+```python
+
+MAX_SIZE = int(2**20)
+OBS_SPACE = env.observation_space
+ACT_SPACE = env.action_space
+
+# 自定义Buffer
+class Buffer(BaseBuffer):
+    def __init__(self, max_size: int, obs_space: Space, act_space: Union[Box, Discrete]):
+        super().__init__()
+        # 控制参数
+	self.max_size = max_size
+        self.curr_size = 0
+        self.ptr = 0
+        # 数据存储模块
+        self.obs_space = obs_space
+        self.act_space = act_space
+        self.data = ... # user collection
+  
+    def reset(self, *args, **kwargs):
+        self.curr_size = 0
+        self.ptr = 0
+
+    def push(
+        self, 
+        transition: tuple[Obs, Act, float, Obs, bool], 
+        terminal: bool = None, 
+        **kwargs
+    ):
+	# add transtion
+        self.data[self.ptr] = ... 
+	# update
+        self.ptr = (1 + self.ptr) % self.max_size
+        self.curr_size = min(1 + self.curr_size, self.max_size)
+
+    def sample(
+        self, 
+        batch_size: int = 1, 
+        *,
+        idxs: ListLike = None,
+        rate: float = None,
+        **kwargs,
+    ) -> dict[str, Union[ObsBatch, ActBatch, th.FloatTensor]]:
+        # sample indexes
+	idxs = idxs or np.random.choice(self.curr_size, size=batch_size, replace=False)
+	# get data
+	batch = {
+	    "s": self.data[idxs] # device: self.device; shape: (batch_size, ...); type: FloatTensor / tuple[FloatTensor,...] / list[FloatTensor] / dict[any, FloatTensor]
+            "a": ...             # device: self.device; shape: (batch_size, act_dim(TD3/SAC/PPO) / 1(DQN/DSAC/DPPO)); type: FloatTensor(TD3/SAC/PPO) / LongTensor(DQN/DSAC/DPPO)
+            "r": ...             # device: self.device; shape: (batch_size, 1); type: FloatTensor
+            "s_": ...            # device: self.device; shape: (batch_size, ...); type: FloatTensor / tuple[FloatTensor,...] / list[FloatTensor] / dict[any, FloatTensor]
+            "done": ...          # device: self.device; shape: (batch_size, 1); type: FloatTensor
+	}
+        return batch
+
+# 为算法设置Buffer
+buffer = Buffer(MAX_SIZE, OBS_SPACE, ACT_SPACE) # 实例化buffer模块
+agent.set_buffer(buffer)
+```
 
 ## 一.路径规划环境SAC应用示例:
 
