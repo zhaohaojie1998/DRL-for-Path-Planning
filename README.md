@@ -71,18 +71,63 @@ agent.use_per # 算法属性, 查看是否使用PER, 默认跟随buffer设置
 ##### 1.自定义神经网络示例
 
 ```python
-encoder_net = MyEncoder()                   # 自定义观测编码器
-mu_net, logstd_net = MyPolicy(), MyPolicy() # 自定义策略函数
-q1_net, q2_net = MyQfun(), MyQfun()         # 自定义双Q函数
-actor = SAC_Actor(encoder_net, mu_net, logstd_net, kwargs=...) # 设置自定义actor网络
-critic = SAC_Critic(encoder_net, q1_net, q2_net)               # 设置自定义critic网络
+FEATURE_DIM = 128
+ACTION_DIM = 3
+
+# 自定义观测Encoder
+class MyEncoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.encoder = ...
+        self.mlp = nn.Sequential(
+            nn.Linear(..., FEATURE_DIM),
+            nn.ReLU(True),
+        )
+    def forward(self, observation):
+        feature = self.mlp(self.encoder(observation))
+        return feature
+
+encoder_net = MyEncoder()
+
+# 自定义策略函数
+class MyPolicy(nn.Module):
+    def __init__(self):
+        super().__init__()
+	self.mlp = nn.Sequential(
+            nn.Linear(FEATURE_DIM, 128),
+            nn.ReLU(True),
+	    nn.Linear(128, ACTION_DIM), # no activation
+        )
+    def forward(self, feature):
+        return self.mlp(feature)
+
+mu_net, logstd_net = MyPolicy(), MyPolicy()
+
+# 自定义Double Q函数
+class MyQfun(nn.Module):
+    def __init__(self):
+        super().__init__()
+	self.mlp = nn.Sequential(
+            nn.Linear(FEATURE_DIM + ACTION_DIM, 128),
+            nn.ReLU(True),
+	    nn.Linear(128, 1), # no activation
+        )
+    def forward(self, feature_and_action):
+        return self.mlp(feature_and_action)
+
+q1_net, q2_net = MyQfun(), MyQfun()
+
+# 为算法设置神经网络
+actor = SAC_Actor(encoder_net, mu_net, logstd_net, kwargs=...) # 实例化actor网络
+critic = SAC_Critic(encoder_net, q1_net, q2_net)               # 实例化critic网络
+
 agent.set_nn(
     actor, 
     critic, 
     actor_optim_cls = th.optim.Adam, 
     critic_optim_cls = th.optim.Adam, 
     copy = True
-) # 为算法设置神经网络
+)
 ```
 
 ### (2).BaseBuffer模块
@@ -91,19 +136,19 @@ agent.set_nn(
 
 要求在派生类中实现以下抽象方法（输入参数和返回数据的格式参考DocString)，可参考demo_train.py中派生类实现方法：
 
-|    **必须实现的方法**    | **功能**                                                                                                                                                                                                                                           |
-| :-----------------------------: | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-|              reset              | 重置经验池（Off-Policy算法一般用不到），也可用于初始化经验池（生成转移元组collections）                                                                                                                                                                  |
-|              push              | 经验存储：存入环境转移元组*(s, a, r, s_, done)* ，其中状态*s* 和下一个状态 *s_* （或观测 *obs* ）为array（或混合形式dict[any, array]、list[array]、tuple[array, ...]），动作 *a* 为array，奖励 *r* 为float， *s_* 是否存在 *done* 为bool。 |
-|             sample             | 经验采样：要求返回包含关键字*'s','a','r','s_','done'* 的*batch* 字典， *batch* 的每个key对应value为Tensor（或dict[any, Tensor]、list[Tensor]、tuple[Tensor, ...]）；PER的batch还要包含关键字 *'IS_weight'* ，对应的value为Tensor。                 |
-|         state_to_tensor         | 数据升维并转换：将Gym输出的1个*obs* 转换成 *batch obs* ，要求返回Tensor（或混合形式dict[any, Tensor]、list[Tensor]、tuple[Tensor, ...]）。                                                                                                           |
+|  **必须实现的方法**  | **功能**                                                                                                                                                                                                                                           |
+| :------------------------: | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|           reset           | 重置经验池（Off-Policy算法一般用不到），也可用于初始化经验池（生成转移元组collections）                                                                                                                                                                  |
+|            push            | 经验存储：存入环境转移元组*(s, a, r, s_, done)* ，其中状态*s* 和下一个状态 *s_* （或观测 *obs* ）为array（或混合形式dict[any, array]、list[array]、tuple[array, ...]），动作 *a* 为array，奖励 *r* 为float， *s_* 是否存在 *done* 为bool。 |
+|           sample           | 经验采样：要求返回包含关键字*'s','a','r','s_','done'* 的*batch* 字典， *batch* 的每个key对应value为Tensor（或dict[any, Tensor]、list[Tensor]、tuple[Tensor, ...]）；PER的batch还要包含关键字 *'IS_weight'* ，对应的value为Tensor。                 |
+|      state_to_tensor      | 数据升维并转换：将Gym输出的1个*obs* 转换成 *batch obs* ，要求返回Tensor（或混合形式dict[any, Tensor]、list[Tensor]、tuple[Tensor, ...]）。                                                                                                           |
 | **非必须实现的方法/属性** | **功能**                                                                                                                                                                                                                                           |
-|              save              | 存储buffer数据，用于保存训练进度，可省略                                                                                                                                                                                                                 |
-|              load              | 加载buffer数据，用于加载训练进度，可省略                                                                                                                                                                                                                 |
-|        update_priorities        | 用于更新PER的优先级，非PER可省略                                                                                                                                                                                                                         |
-|         is_per（属性）         | 是否是PER回放，默认False                                                                                                                                                                                                                                 |
-|         is_rnn（属性）         | 是否RNN按episode回放，默认False                                                                                                                                                                                                                          |
-|         nbytes（属性）         | 用于查看经验池占用内存，默认0                                                                                                                                                                                                                            |
+|            save            | 存储buffer数据，用于保存训练进度，可省略                                                                                                                                                                                                                 |
+|            load            | 加载buffer数据，用于加载训练进度，可省略                                                                                                                                                                                                                 |
+|     update_priorities     | 用于更新PER的优先级，非PER可省略                                                                                                                                                                                                                         |
+|       is_per（属性）       | 是否是PER回放，默认False                                                                                                                                                                                                                                 |
+|       is_rnn（属性）       | 是否RNN按episode回放，默认False                                                                                                                                                                                                                          |
+|       nbytes（属性）       | 用于查看经验池占用内存，默认0                                                                                                                                                                                                                            |
 
 ## 一.路径规划环境SAC应用示例:
 
@@ -259,7 +304,7 @@ D为距离、V为速度、q为视线角、points为雷达测距
 | 数据结构                     | shape = (N, 3); dtype = float32      |
 | low                          | [ [0, V_low, -pi] ] * N              |
 | high                         | [ [1.414*map_size, V_high, pi] ] * N |
-| **时序points观测空间** | **N=4，n=128**                       |
+| **时序points观测空间** | **N=4，n=128**                      |
 | 空间名（onnx输入名）         | “seq_points"                        |
 | 空间类型                     | Box                                  |
 | 数据结构                     | shape = (N, n) ; dtype = float32     |
