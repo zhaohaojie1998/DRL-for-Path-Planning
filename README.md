@@ -272,13 +272,13 @@ $$
 \mathbf{s} = \mathbf{o} \subset \text{Box} \left \{ x_{0},y_{0},\dots x_{n-1},y_{n-1}  \right \}
 $$
 
-| 观测空间             | n=6                            |
-| :------------------- | :----------------------------- |
-| 空间名（onnx输入名） | ”observation“                |
-| 空间类型             | Box                            |
-| 数据结构             | shape = (n, ); dtype = float32 |
-| low                  | [x_min, y_min] * n             |
-| high                 | [x_max, y_max] * n             |
+| 观测空间             | n=6                             |
+| :------------------- | :------------------------------ |
+| 空间名（onnx输入名） | ”observation“                 |
+| 空间类型             | Box                             |
+| 数据结构             | shape = (2n, ); dtype = float32 |
+| low                  | [x_min, y_min] * n              |
+| high                 | [x_max, y_max] * n              |
 
 1.1动作空间（BoxSpace）:
 
@@ -290,7 +290,7 @@ $$
 | :------------------- | :----------------------------------------- |
 | 空间名（onnx输出名） | ”action“                                 |
 | 空间类型             | Box                                        |
-| 数据结构             | shape = (n, ); dtype = float32             |
+| 数据结构             | shape = (2n, ); dtype = float32            |
 | low                  | [-(x_max-x_min)/10, -(y_max-y_min)/10] * n |
 | high                 | [+(x_max-x_min)/10, +(y_max-y_min)/10] * n |
 
